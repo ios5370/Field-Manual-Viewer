@@ -1,0 +1,11 @@
+/archive/
+/data/
+/reports/
+/runtime/
+/tmp/
+/build/
+__pycache__/
+*.pyc
+*.pdf
+*.epub
+*.sqlite*

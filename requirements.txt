@@ -1,0 +1,7 @@
+beautifulsoup4==4.15.0
+json5==0.17.3
+pypdf==7.0.0
+cryptography==50.0.2
+pypdfium2==5.15.1
+fonttools==4.68.0
+pillow==13.0.0
