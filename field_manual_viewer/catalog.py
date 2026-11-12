@@ -4,19 +4,99 @@ import json
 import math
 import re
 import sqlite3
+import threading
 import time
 from contextlib import closing
 from .indexing import ENGINE
+from . import core
 from .core import ROOT, database, load_json, original_evidence_current
 
+_CACHE_LOCK = threading.RLock()
+_CACHE_BUILD_LOCK = threading.Lock()
+_CACHE = None
 
-def original_available(row, evidence):
-    return row['status'] in ('complete','skipped_verified','recovered') and original_evidence_current(
-        ROOT, row, evidence.get((row['pub_id'],row['format']), {}))
+
+GOOD = ('complete', 'skipped_verified', 'recovered')
+
+
+def original_available(row, evidence, presence=None, cached=True):
+    """Cached availability for browsing; the reader boundary still checks the file."""
+    if row['status'] not in GOOD or not row['sha256']:
+        return False
+    key = (row['pub_id'], row['format'])
+    stamp = evidence.get(key, {})
+    if cached and presence is not None and key in presence:
+        record = presence[key]
+        return bool(record.get('present')
+                    and record.get('bytes') == row['bytes']
+                    and stamp.get('sha256') == row['sha256']
+                    and stamp.get('bytes') == row['bytes']
+                    and stamp.get('mtime_ns') is not None
+                    and record.get('mtime_ns') == stamp.get('mtime_ns'))
+    return original_evidence_current(ROOT, row, stamp)
 
 
 def file_evidence(db):
     return {(r['pub_id'],r['format']):dict(r) for r in db.execute('SELECT * FROM file_evidence')}
+
+
+def file_presence(db):
+    return {(r['pub_id'],r['format']):dict(r) for r in db.execute('SELECT * FROM file_presence')}
+
+
+def invalidate_cache():
+    global _CACHE
+    with _CACHE_LOCK:
+        _CACHE = None
+
+
+def _cache_key(db):
+    revision = db.execute("SELECT value FROM reconcile_state WHERE key='revision'").fetchone()
+    files = db.execute("SELECT count(*),coalesce(sum(bytes),0),coalesce(max(updated),''),"
+                       "coalesce(sum(length(updated)),0),coalesce(group_concat(status,''),'') "
+                       "FROM files").fetchone()
+    publications = db.execute('SELECT count(*),coalesce(sum(length(metadata)),0) FROM publications').fetchone()
+    indexes = db.execute("SELECT count(*),coalesce(sum(segments),0),coalesce(sum(length(error)),0) "
+                         "FROM index_state").fetchone()
+    return (str((core.ROOT/'data/field-manual-viewer.sqlite').resolve()),
+            int(revision[0]) if revision and str(revision[0]).isdigit() else 0,
+            tuple(files), tuple(publications), tuple(indexes))
+
+
+def _catalog_data(db):
+    """Reuse parsed catalog rows until the database's visible state changes."""
+    global _CACHE
+    key = _cache_key(db)
+    with _CACHE_LOCK:
+        if _CACHE and _CACHE['key'] == key:
+            return _CACHE
+    with _CACHE_BUILD_LOCK:
+        # Another request may have populated the cache while we waited.
+        key = _cache_key(db)
+        with _CACHE_LOCK:
+            if _CACHE and _CACHE['key'] == key:
+                return _CACHE
+        data = {
+            'key': key,
+            'publications': {r['id']: json.loads(r['metadata'])
+                             for r in db.execute('SELECT id,metadata FROM publications')},
+            'files': [dict(r) for r in db.execute('SELECT * FROM files')],
+            'evidence': file_evidence(db),
+            'presence': file_presence(db),
+            'indexes': [dict(r) for r in db.execute('SELECT * FROM index_state WHERE error IS NULL')],
+        }
+        with _CACHE_LOCK:
+            _CACHE = data
+        return data
+
+
+def prewarm():
+    """Parse the catalog in the background before the browser asks for it."""
+    try:
+        with closing(database()) as db:
+            _catalog_data(db)
+    except Exception:
+        pass
 
 
 def expression(query):
@@ -25,14 +105,12 @@ def expression(query):
 
 
 def status():
-    from .indexing import ENGINE
-    db = database()
-    evidence = file_evidence(db)
-    files = [dict(r) for r in db.execute('SELECT * FROM files')]
-    indexes = [dict(r) for r in db.execute('SELECT * FROM index_state WHERE error IS NULL')]
-    total = db.execute('SELECT count(*) FROM publications').fetchone()[0]
-    db.close()
-    good={(f['pub_id'],f['format']):f for f in files if original_available(f,evidence)}
+    with closing(database()) as db:
+        data = _catalog_data(db)
+    evidence, files, indexes = data['evidence'], data['files'], data['indexes']
+    presence = data['presence']
+    total = len(data['publications'])
+    good={(f['pub_id'],f['format']):f for f in files if original_available(f,evidence,presence)}
     counts={fmt:{'format':fmt,'files':sum(key[1]==fmt for key in good),
                  'bytes':sum(f['bytes'] for key,f in good.items() if key[1]==fmt)} for fmt in ('pdf','epub')}
     indexed=dict(collections.Counter(i['format'] for i in indexes if i['engine']==ENGINE and (i['pub_id'],i['format']) in good
@@ -42,6 +120,9 @@ def status():
                (f['status'] in ('complete','skipped_verified','recovered') and (f['pub_id'],f['format']) not in good) for f in files)
     return {'total': total, 'acquired': acquired, 'formats': counts, 'indexed': indexed,
             'failed_files': errors, 'complete': total>0 and all(counts.get(f, {}).get('files', 0) == total for f in ('pdf','epub')),
+            'pending_verification': sum(1 for f in files if f['status'] == 'pending_verification'),
+            'missing_presence': sum(1 for key, row in presence.items() if not row.get('present')),
+            'reconcile': load_json(ROOT / 'reports/reconcile.json', {}),
             'campaign': load_json(ROOT / 'reports/campaign.json', {'state': 'not_started'}),
             'storage': load_json(ROOT / 'reports/storage-preflight.json', {})}
 
@@ -53,9 +134,13 @@ def details(pub_id):
     if not row:
         db.close(); return None
     p = json.loads(row[0])
+    p['reconstructed'] = bool(p.get('_reconstructed'))
+    presence = {(r['pub_id'], r['format']): dict(r) for r in db.execute('SELECT * FROM file_presence WHERE pub_id=?', (pub_id,))}
     p['files'] = [dict(f) for f in db.execute('SELECT * FROM files WHERE pub_id=?', (pub_id,))]
     for file in p['files']:
-        file['available'] = original_available(file,evidence)
+        file['available'] = original_available(file,evidence,presence)
+        record = presence.get((file['pub_id'], file['format']))
+        file['present'] = bool(record.get('present')) if record is not None else file['available']
     p['index'] = [dict(f) for f in db.execute('SELECT * FROM index_state WHERE pub_id=?', (pub_id,))]
     editions = []
     for e in p.get('editions', []):
@@ -71,24 +156,33 @@ def browse(params, timeout_seconds=20):
     with closing(database()) as db:
         deadline=time.monotonic()+timeout_seconds
         db.set_progress_handler(lambda: time.monotonic()>deadline,1000)
-        try:return _browse(db,params)
+        try:
+            data=_catalog_data(db)
+            return _browse(db,params,data)
         except sqlite3.OperationalError as error:
             if str(error)=='interrupted':
                 raise ValueError('This search exceeded 20 seconds. Try a more specific phrase or add another word.') from error
             raise
 
 
-def _browse(db,params):
-    evidence = file_evidence(db)
-    publications = {r['id']: json.loads(r['metadata']) for r in db.execute('SELECT * FROM publications')}
+def _browse(db,params,data=None):
+    if data is None:
+        data=_catalog_data(db)
+    evidence, presence = data['evidence'], data['presence']
+    publications = data['publications']
     available = collections.defaultdict(dict)
-    for r in db.execute("SELECT * FROM files WHERE sha256 IS NOT NULL AND status IN ('complete','skipped_verified','recovered')"):
-        if original_available(r,evidence): available[r['pub_id']][r['format']] = dict(r)
+    for r in data['files']:
+        if r['sha256'] and r['status'] in ('complete','skipped_verified','recovered'):
+            if original_available(r,evidence,presence): available[r['pub_id']][r['format']] = dict(r)
     indexed = collections.defaultdict(set)
     segments = {}
-    for r in db.execute('SELECT i.pub_id,i.format,i.segments FROM index_state i JOIN files f ON f.pub_id=i.pub_id AND f.format=i.format WHERE i.error IS NULL AND i.sha256=f.sha256 AND i.engine=?',(ENGINE,)):
-        indexed[r[0]].add(r[1])
-        segments[(r[0],r[1])]=max(1,r[2])
+    files_by_key = {(f['pub_id'],f['format']): f for f in data['files']}
+    for index in data['indexes']:
+        source = files_by_key.get((index['pub_id'], index['format']))
+        if not source or index['engine'] != ENGINE or index['sha256'] != source['sha256']:
+            continue
+        indexed[index['pub_id']].add(index['format'])
+        segments[(index['pub_id'],index['format'])] = max(1,index['segments'] or 0)
     facets = {key: sorted({str(p[key]) for p in publications.values() if p.get(key)})
               for key in ('branch','pub_type','functional_category','collection')}
     ids = set(publications)
@@ -126,6 +220,9 @@ def _browse(db,params):
                 for r in db.execute(f'SELECT pub_id,count(*) AS matches FROM {table} WHERE {table} MATCH ? GROUP BY pub_id',(match_expr,)):
                     identity=r['pub_id']
                     if identity not in ids or kind not in available[identity] or kind not in indexed[identity]:continue
+                    # Search hits must not outlive the actual original just because
+                    # the catalog cache still lists it.  Check only matched formats.
+                    if not original_available(available[identity][kind],evidence,presence,cached=False):continue
                     content_matches.add(identity)
                     score=-r['matches']/segments[(identity,kind)]
                     scores[identity]=min(scores.get(identity,0),score)
@@ -165,5 +262,6 @@ def _browse(db,params):
         rows.append({k:p.get(k) for k in ('id','title','designation','branch','branch_label','edition_year','edition_date',
                                           'pub_type','collection','functional_category','purpose','page_count','_stub')} |
                     {'files': sorted(available[i]), 'indexed':sorted(indexed[i]), 'hits':hits[i],
-                     'editions':len(p.get('editions',[]))})
+                     'editions':len(p.get('editions',[])),
+                     'reconstructed':bool(p.get('_reconstructed'))})
     return {'results':rows,'total':total,'page':page,'pages':pages,'size':size,'facets':facets,'available_total':len(available),'catalog_total':len(publications)}

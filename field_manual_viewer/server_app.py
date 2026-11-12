@@ -15,7 +15,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer as BaseThrea
 from . import APP_VERSION
 from .core import ROOT, database
 from .search import search
-from . import catalog, readers
+from . import catalog, readers, reconcile
 from .viewer_lifetime import ViewerLifetime
 
 STATIC = ROOT / 'field_manual_viewer/static'
@@ -98,7 +98,7 @@ class Handler(BaseHTTPRequestHandler):
             if instance and instance!=self.server.viewer_instance:
                 return self.send(409,'This viewer session has closed or changed. Reopen its library launcher.','text/plain; charset=utf-8')
         if path == '/' or path.startswith('/read/') or path.startswith('/original/pdf/'):
-            page=(STATIC/'index.html').read_text(encoding='utf8').replace('__VIEWER_INSTANCE__',self.server.viewer_instance)
+            page=(STATIC/'index.html').read_text(encoding='utf8').replace('__VIEWER_INSTANCE__',self.server.viewer_instance).replace('__APP_VERSION__',APP_VERSION)
             for asset in ('app.js','style.css'):
                 revision=hashlib.sha256((STATIC/asset).read_bytes()).hexdigest()[:12]
                 page=page.replace('/assets/'+asset,'/assets/'+asset+'?v='+revision)
@@ -110,6 +110,10 @@ class Handler(BaseHTTPRequestHandler):
             if name not in ('style.css','app.js'): raise FileNotFoundError('Asset not found')
             return self.send(200,(STATIC/name).read_bytes(),'text/css' if name.endswith('.css') else 'text/javascript; charset=utf-8')
         if path=='/api/health': return self.json({'app':'Field Manual Viewer','root':str(ROOT),'version':APP_VERSION})
+        if path=='/api/reconcile':
+            if q.get('scan')=='force': reconcile.ensure_started(force=True)
+            elif q.get('scan')=='1': reconcile.ensure_started()
+            return self.json(reconcile.report())
         if path=='/api/status': return self.json(catalog.status())
         if path=='/api/catalog': return self.json(catalog.browse(q))
         if path=='/api/search': return self.json(search(q.pop('q',''),q,scope=q.pop('scope','all')))

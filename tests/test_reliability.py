@@ -7,6 +7,7 @@ from pathlib import Path
 from unittest.mock import patch
 from field_manual_viewer.collect import transfer, validate
 from field_manual_viewer.discover import merge
+from field_manual_viewer.indexing import epub_sections
 from field_manual_viewer.source import metadata
 
 
@@ -63,6 +64,45 @@ class Reliability(unittest.TestCase):
                 transfer(client, 'https://example.test/a', dest, 'epub', len(body), interrupt_after=1)
             self.assertEqual(transfer(client, 'https://example.test/a', dest, 'epub', len(body))['resumed_from'], 0)
             self.assertEqual(dest.read_bytes(), body)
+
+    def test_epub_compression_bomb_is_rejected(self):
+        with tempfile.TemporaryDirectory(dir=Path(__file__).resolve().parent.parent / 'tmp') as d:
+            path = Path(d) / 'bomb.epub'
+            with zipfile.ZipFile(path, 'w', zipfile.ZIP_DEFLATED) as archive:
+                archive.writestr('mimetype', 'application/epub+zip')
+                archive.writestr('META-INF/container.xml', '<container/>')
+                archive.writestr('bomb.bin', b'0' * (5 * 1024 * 1024))
+            with self.assertRaisesRegex(ValueError, 'unsafe'):
+                validate(path, 'epub')
+
+    def test_epub_spine_path_traversal_is_rejected(self):
+        with tempfile.TemporaryDirectory(dir=Path(__file__).resolve().parent.parent / 'tmp') as d:
+            path = Path(d) / 'traversal.epub'
+            with zipfile.ZipFile(path, 'w') as archive:
+                archive.writestr('mimetype', 'application/epub+zip')
+                archive.writestr('META-INF/container.xml',
+                                 '<container><rootfiles><rootfile full-path="book.opf"/></rootfiles></container>')
+                archive.writestr('book.opf',
+                                 '<package><manifest><item id="chapter" href="../evil.xhtml"/></manifest>'
+                                 '<spine><itemref idref="chapter"/></spine></package>')
+                archive.writestr('../evil.xhtml', '<html><body>bad</body></html>')
+            with self.assertRaisesRegex(ValueError, 'Unsafe EPUB spine path'):
+                list(epub_sections(path))
+
+    def test_epub_xml_entity_declarations_are_rejected(self):
+        with tempfile.TemporaryDirectory(dir=Path(__file__).resolve().parent.parent / 'tmp') as d:
+            path = Path(d) / 'entity.epub'
+            with zipfile.ZipFile(path, 'w') as archive:
+                archive.writestr('mimetype', 'application/epub+zip')
+                archive.writestr('META-INF/container.xml',
+                                 '<container><rootfiles><rootfile full-path="book.opf"/></rootfiles></container>')
+                archive.writestr('book.opf',
+                                 '<!DOCTYPE package [<!ENTITY x "boom">]><package>'
+                                 '<manifest><item id="chapter" href="chapter.xhtml"/></manifest>'
+                                 '<spine><itemref idref="chapter"/></spine></package>')
+                archive.writestr('chapter.xhtml', '<html><body>safe</body></html>')
+            with self.assertRaisesRegex(ValueError, 'entity declarations'):
+                list(epub_sections(path))
 
     def test_invalid_signature_and_size(self):
         with tempfile.TemporaryDirectory(dir=Path(__file__).resolve().parent.parent / 'tmp') as d:

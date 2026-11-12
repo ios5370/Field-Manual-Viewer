@@ -56,24 +56,30 @@ def worker(action):
             save_json(ROOT / 'data/setup-worker.json', {'pid':os.getpid(),'executable':str(sys.executable)})
             activity('verifying', 'Checking your saved originals.', action=action)
             previously_ready = load_json(ROOT / 'data/completion.json', {}).get('ready')
-            issues = reconcile_hashes(lambda message: activity('verifying', message))
-            if issues and previously_ready and action in ('download', 'test'):
-                raise RuntimeError('Some originals need repair. Choose Advanced > Repair missing or failed originals to authorize retrieval; verified files are retained.')
+            from .reconcile import run_sync
+            # This discovers files copied in by hand, verifies new or changed
+            # originals once, and leaves an intact library's checksums alone.
+            run_sync(index=False, ignore_setup=True, deep=action == 'verify',
+                     wait_seconds=300, progress=lambda text: activity('verifying', text))
             if action == 'verify':
                 state = finalize()
                 message = 'Integrity check finished. ' + (f'{len(state["issues"])} issues are listed in Advanced > Review errors.' if state['issues'] else 'Saved originals match their recorded checksums.')
-            elif action == 'index':
-                from .indexing import build
-                activity('indexing', 'Preparing your documents for searching.')
-                build()
-                state = finalize()
-                message = 'Indexing finished. ' + str(state['pending_indexes']) + ' indexes remain pending.'
             else:
-                from .download import execute
-                execute(test=action == 'test', refresh=action == 'refresh', retry_failed=action == 'repair', prepared=True)
-                state = finalize()
-                message = ('Your offline library is ready.' if not state['missing_files'] and not state['pending_indexes']
-                           else 'Preparation finished. Review the counts and any exceptions below.')
+                issues = reconcile_hashes(lambda text: activity('verifying', text), deep=False)
+                if issues and previously_ready and action in ('download', 'test'):
+                    raise RuntimeError('Some originals need repair. Choose Advanced > Repair missing or failed originals to authorize retrieval; verified files are retained.')
+                if action == 'index':
+                    from .indexing import build
+                    activity('indexing', 'Preparing your documents for searching.')
+                    build()
+                    state = finalize()
+                    message = 'Indexing finished. ' + str(state['pending_indexes']) + ' indexes remain pending.'
+                else:
+                    from .download import execute
+                    execute(test=action == 'test', refresh=action == 'refresh', retry_failed=action == 'repair', prepared=True)
+                    state = finalize()
+                    message = ('Your offline library is ready.' if not state['missing_files'] and not state['pending_indexes']
+                               else 'Preparation finished. Review the counts and any exceptions below.')
             save_json(ROOT / 'reports/setup-job.json', {'state': 'finished', 'phase': 'finished',
                       'message': message, 'action':action, 'updated_utc': now(), 'pid': os.getpid()})
         except (CampaignPaused, KeyboardInterrupt) as error:

@@ -15,7 +15,8 @@ def archived(pub_id, fmt):
         r = db.execute("SELECT * FROM files WHERE pub_id=? AND format=? AND sha256 IS NOT NULL AND status IN ('complete','skipped_verified','recovered')", (pub_id,fmt)).fetchone()
         stamp = db.execute('SELECT * FROM file_evidence WHERE pub_id=? AND format=?',(pub_id,fmt)).fetchone()
     if not r or not original_evidence_current(ROOT,r,dict(stamp) if stamp else {}):
-        raise FileNotFoundError('Original is missing or changed. Use Library Setup to check saved file integrity.')
+        raise FileNotFoundError('Original is missing, changed, or its archive drive is unavailable. '
+                                'Reconnect the archive if needed, or use Library Setup to check the saved originals.')
     path = (ROOT / r['path']).resolve()
     return path
 

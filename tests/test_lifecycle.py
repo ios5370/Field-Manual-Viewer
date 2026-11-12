@@ -6,7 +6,7 @@ import unittest
 from contextlib import ExitStack, closing
 from pathlib import Path
 from unittest.mock import patch
-from field_manual_viewer import core, lifecycle, collect, setup_control, catalog, readers, search
+from field_manual_viewer import core, lifecycle, collect, setup_control, catalog, readers, search, reconcile
 from field_manual_viewer.indexing import ENGINE
 
 
@@ -52,8 +52,10 @@ class LifecycleTests(unittest.TestCase):
         stamp=path.stat().st_mtime_ns
         path.write_bytes(b'X'*path.stat().st_size)
         os.utime(path,ns=(stamp+10000000,stamp+10000000))
-        self.assertEqual(catalog.browse({})['results'][0]['files'],['epub'])
-        self.assertFalse(next(f for f in catalog.details('book')['files'] if f['format']=='pdf')['available'])
+        # Cached-first browsing keeps the last known good card while search and
+        # the reader already reject the changed bytes.
+        self.assertEqual(catalog.browse({})['results'][0]['files'],['epub','pdf'])
+        self.assertTrue(next(f for f in catalog.details('book')['files'] if f['format']=='pdf')['available'])
         self.assertEqual(catalog.browse({'q':'distinctive','scope':'body'})['total'],0)
         self.assertEqual(search.search('distinctive'),[])
         with self.assertRaises(FileNotFoundError):readers.archived('book','pdf')
@@ -63,6 +65,8 @@ class LifecycleTests(unittest.TestCase):
         with closing(core.database()) as db:
             row=db.execute("SELECT sha256,status FROM files WHERE format='pdf'").fetchone()
         self.assertEqual(tuple(row),(sha,'damaged'))
+        self.assertEqual(catalog.browse({})['results'][0]['files'],['epub'])
+        self.assertFalse(next(f for f in catalog.details('book')['files'] if f['format']=='pdf')['available'])
         self.assertEqual(path.read_bytes(),b'X'*path.stat().st_size)
 
     def test_unavailable_original_is_explicit_exception(self):
@@ -131,6 +135,10 @@ class LifecycleTests(unittest.TestCase):
             db.execute('INSERT INTO passages VALUES (?,?,?,?,?,?)',('book',1,'Test manual','FM 1','','distinctive passage'))
         self.assertEqual(catalog.browse({'q':'distinctive','scope':'body','format':'pdf'})['total'],1)
         pdf.unlink()
+        self.assertEqual(catalog.browse({})['results'][0]['files'],['epub','pdf'])
+        self.assertTrue(catalog.status()['complete'])
+        self.assertTrue(next(f for f in catalog.details('book')['files'] if f['format']=='pdf')['available'])
+        reconcile.run_sync(index=False)
         self.assertFalse(catalog.status()['complete'])
         self.assertEqual(catalog.status()['formats']['pdf']['files'],0)
         state=catalog.browse({})
@@ -138,6 +146,7 @@ class LifecycleTests(unittest.TestCase):
         self.assertEqual(catalog.browse({'q':'distinctive','scope':'body','format':'both'})['total'],0)
         self.assertFalse(next(f for f in catalog.details('book')['files'] if f['format']=='pdf')['available'])
         epub.unlink()
+        reconcile.run_sync(index=False)
         self.assertEqual(catalog.browse({})['total'],0)
         discovered=catalog.browse({'availability':'all'})
         self.assertEqual(discovered['total'],1)

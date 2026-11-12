@@ -11,11 +11,19 @@ from .core import ROOT, database, save_json, FileLock
 ENGINE = 'pdfium-5.15.1-epub-spine-v1'
 
 
+def _epub_xml(data):
+    if b'<!entity' in data.lower():
+        raise ValueError('EPUB XML entity declarations are not allowed')
+    return ET.fromstring(data)
+
+
 def epub_sections(path):
     with zipfile.ZipFile(path) as z:
-        container = ET.fromstring(z.read('META-INF/container.xml'))
+        from .collect import validate_epub_container
+        validate_epub_container(z)
+        container = _epub_xml(z.read('META-INF/container.xml'))
         rootfile = next(e for e in container.iter() if e.tag.endswith('rootfile')).attrib['full-path']
-        package = ET.fromstring(z.read(rootfile))
+        package = _epub_xml(z.read(rootfile))
         items = {e.attrib['id']: e.attrib for e in package.iter() if e.tag.endswith('}item') or e.tag == 'item'}
         for itemref in package.iter():
             if not (itemref.tag.endswith('}itemref') or itemref.tag == 'itemref'):
@@ -44,6 +52,22 @@ def ensure_pdf_lookup():
             db.execute("INSERT INTO reader_lookup VALUES ('pdf-pages-v1')")
 
 
+def _delete_index_rows(db, table, pub_id, fmt, prior):
+    """Delete FTS rows by rowid; never scan an UNINDEXED pub_id for new docs."""
+    rowids = [r[0] for r in db.execute(
+        'SELECT rowid FROM index_rows WHERE pub_id=? AND format=?', (pub_id, fmt))]
+    if not rowids and fmt == 'pdf':
+        rowids = [r[0] for r in db.execute(
+            'SELECT passage_rowid FROM pdf_pages WHERE pub_id=?', (pub_id,))]
+    if rowids:
+        db.executemany(f'DELETE FROM {table} WHERE rowid=?', [(rowid,) for rowid in rowids])
+    elif prior is not None:
+        # Legacy index without row mapping.  Reindexing is rare; this fallback
+        # is deliberately avoided for newly downloaded documents.
+        db.execute(f'DELETE FROM {table} WHERE pub_id=?', (pub_id,))
+    db.execute('DELETE FROM index_rows WHERE pub_id=? AND format=?', (pub_id, fmt))
+
+
 def index_one(pub_id, rebuild=False):
     db = database()
     p = json.loads(db.execute('SELECT metadata FROM publications WHERE id=?', (pub_id,)).fetchone()[0])
@@ -69,10 +93,11 @@ def index_one(pub_id, rebuild=False):
                 finally:
                     doc.close()
                 with db:
-                    db.execute('DELETE FROM passages WHERE pub_id=?', (pub_id,))
+                    _delete_index_rows(db, 'passages', pub_id, 'pdf', prior)
                     last=db.execute('SELECT rowid FROM passages ORDER BY rowid DESC LIMIT 1').fetchone()
                     first=(last[0] if last else 0)+1
                     db.executemany('INSERT INTO passages(rowid,pub_id,page,title,designation,toc,body) VALUES (?,?,?,?,?,?,?)',[(first+n,*row) for n,row in enumerate(rows)])
+                    db.executemany('INSERT INTO index_rows VALUES (?,?,?)',[(pub_id,'pdf',first+n) for n in range(len(rows))])
                     db.execute('DELETE FROM pdf_pages WHERE pub_id=?',(pub_id,))
                     db.executemany('INSERT INTO pdf_pages VALUES (?,?,?)',[(pub_id,row[1],first+n) for n,row in enumerate(rows)])
                     db.execute('INSERT OR REPLACE INTO extraction VALUES (?,?,?,NULL)', (pub_id, len(rows), sparse))
@@ -81,8 +106,13 @@ def index_one(pub_id, rebuild=False):
                 if not rows:
                     raise ValueError('EPUB has no readable spine sections')
                 with db:
-                    db.execute('DELETE FROM epub_passages WHERE pub_id=?', (pub_id,))
-                    db.executemany('INSERT INTO epub_passages VALUES (?,?,?,?)', rows)
+                    _delete_index_rows(db, 'epub_passages', pub_id, 'epub', prior)
+                    last=db.execute('SELECT rowid FROM epub_passages ORDER BY rowid DESC LIMIT 1').fetchone()
+                    first=(last[0] if last else 0)+1
+                    db.executemany('INSERT INTO epub_passages(rowid,pub_id,locator,title,body) VALUES (?,?,?,?,?)',
+                                   [(first+n,*row) for n,row in enumerate(rows)])
+                    db.executemany('INSERT INTO index_rows VALUES (?,?,?)',
+                                   [(pub_id,'epub',first+n) for n in range(len(rows))])
             with db:
                 db.execute('INSERT OR REPLACE INTO index_state VALUES (?,?,?,?,?,?,NULL)',
                            (pub_id, f['format'], f['sha256'], ENGINE, len(rows), sparse))

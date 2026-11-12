@@ -88,7 +88,9 @@ def database():
     db.row_factory = sqlite3.Row
     try:
         with _SCHEMA_LOCK:
-            if path not in _INITIALIZED_DATABASES:
+            initialized = (path in _INITIALIZED_DATABASES
+                           and db.execute("SELECT 1 FROM sqlite_master WHERE name='publications'").fetchone())
+            if not initialized:
                 if db.execute('PRAGMA journal_mode').fetchone()[0].lower() != 'wal':
                     db.execute('PRAGMA journal_mode=WAL')
                 if not db.execute("SELECT 1 FROM sqlite_master WHERE name='file_evidence'").fetchone(): db.executescript('''
@@ -108,10 +110,54 @@ def database():
     CREATE TABLE IF NOT EXISTS events(time TEXT, kind TEXT, pub_id TEXT, detail TEXT);
     CREATE TABLE IF NOT EXISTS file_evidence(pub_id TEXT, format TEXT, sha256 TEXT,
       bytes INTEGER, mtime_ns INTEGER, PRIMARY KEY(pub_id,format));
+    CREATE TABLE IF NOT EXISTS index_rows(pub_id TEXT, format TEXT, rowid INTEGER,
+      PRIMARY KEY(pub_id,format,rowid));
                 ''')
                 if db.execute("SELECT count(*) FROM sqlite_master WHERE name IN ('pdf_pages','reader_lookup')").fetchone()[0]!=2:
                     db.executescript('BEGIN; CREATE TABLE IF NOT EXISTS pdf_pages(pub_id TEXT,page INTEGER,passage_rowid INTEGER,PRIMARY KEY(pub_id,page)) WITHOUT ROWID; CREATE TABLE IF NOT EXISTS reader_lookup(version TEXT PRIMARY KEY); COMMIT;')
                 _INITIALIZED_DATABASES.add(path)
+            # These tables are also added to libraries created by earlier releases.
+            # The sqlite_master checks keep ordinary connections read-only and cheap.
+            if (not db.execute("SELECT 1 FROM sqlite_master WHERE name='file_presence'").fetchone()
+                    or not db.execute("SELECT 1 FROM sqlite_master WHERE name='reconcile_state'").fetchone()):
+                db.executescript('''
+    CREATE TABLE IF NOT EXISTS file_presence(pub_id TEXT, format TEXT, present INTEGER NOT NULL DEFAULT 0,
+      bytes INTEGER, mtime_ns INTEGER, checked_utc TEXT, error TEXT,
+      error_bytes INTEGER, error_mtime_ns INTEGER, PRIMARY KEY(pub_id,format));
+    CREATE TABLE IF NOT EXISTS reconcile_state(key TEXT PRIMARY KEY, value TEXT NOT NULL);
+    CREATE INDEX IF NOT EXISTS files_path_index ON files(path);
+                ''')
+            presence_columns = {row[1] for row in db.execute('PRAGMA table_info(file_presence)')}
+            if 'error_bytes' not in presence_columns:
+                db.execute('ALTER TABLE file_presence ADD COLUMN error_bytes INTEGER')
+            if 'error_mtime_ns' not in presence_columns:
+                db.execute('ALTER TABLE file_presence ADD COLUMN error_mtime_ns INTEGER')
+            # FTS5 cannot delete by an UNINDEXED column without scanning the whole
+            # index.  Track inserted rowids so reindexing stays proportional.
+            if not db.execute("SELECT 1 FROM sqlite_master WHERE name='index_rows'").fetchone():
+                db.executescript('''
+    CREATE TABLE IF NOT EXISTS index_rows(pub_id TEXT, format TEXT, rowid INTEGER,
+      PRIMARY KEY(pub_id,format,rowid));
+                ''')
+                if db.execute("SELECT 1 FROM sqlite_master WHERE name='pdf_pages'").fetchone():
+                    db.execute("INSERT OR IGNORE INTO index_rows SELECT pub_id,'pdf',passage_rowid FROM pdf_pages")
+                    db.commit()
+            # Seed the cached presence ledger from durable evidence when upgrading an
+            # older library.  The next background scan still checks the real files.
+            if db.execute('SELECT count(*) FROM file_presence').fetchone()[0] == 0:
+                if db.execute('SELECT count(*) FROM files').fetchone()[0]:
+                    db.execute('''
+    INSERT OR IGNORE INTO file_presence
+      (pub_id,format,present,bytes,mtime_ns,checked_utc,error,error_bytes,error_mtime_ns)
+    SELECT f.pub_id,f.format,
+      CASE WHEN f.status IN ('complete','skipped_verified','recovered')
+                AND f.sha256 IS NOT NULL AND e.sha256=f.sha256
+                AND e.bytes=f.bytes AND e.mtime_ns IS NOT NULL THEN 1 ELSE 0 END,
+      f.bytes,e.mtime_ns,NULL,f.error,NULL,NULL
+    FROM files f LEFT JOIN file_evidence e
+      ON e.pub_id=f.pub_id AND e.format=f.format
+                    ''')
+                    db.commit()
     except Exception:
         db.close()
         raise
@@ -122,7 +168,9 @@ def load_json(path, default=None):
     import json
     try:
         return json.loads(Path(path).read_text(encoding='utf8'))
-    except FileNotFoundError:
+    except (OSError, ValueError):
+        # Progress and report files are disposable.  A truncated write, permission
+        # problem or hand-edited file must not take down the viewer or Setup.
         return default
 
 

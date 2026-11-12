@@ -8,10 +8,15 @@ appears in the manifest below.
 from pathlib import Path
 import hashlib
 import json
+import re
+import shutil
 import zipfile
 
 ROOT = Path(__file__).resolve().parent.parent
-PREFIX = 'Field-Manual-Viewer/'
+APP_VERSION = re.search(r"^APP_VERSION\s*=\s*'([^']+)'",
+                        (ROOT / 'field_manual_viewer/__init__.py').read_text(encoding='utf8'),
+                        re.MULTILINE).group(1)
+PREFIX = f'Field Manual Viewer Portable v{APP_VERSION}/'
 
 # Documents and launchers a user needs.
 ROOT_FILES = (
@@ -41,6 +46,7 @@ PACKAGE_FILES = (
     'parallel.py',
     'parallel_network.py',
     'readers.py',
+    'reconcile.py',
     'report.py',
     'search.py',
     'server.py',
@@ -92,7 +98,8 @@ def build():
     files = manifest + runtime_files(runtime)
     expected = {PREFIX + p.relative_to(ROOT).as_posix() for p in files}
 
-    target = ROOT / 'build/Field-Manual-Viewer-Windows-x64.zip'
+    target = ROOT / 'build' / f'Field-Manual-Viewer-Portable-v{APP_VERSION}-Windows-x64.zip'
+    canonical = ROOT / 'build/Field-Manual-Viewer-Windows-x64.zip'
     target.parent.mkdir(exist_ok=True)
     with zipfile.ZipFile(target, 'w', zipfile.ZIP_DEFLATED, compresslevel=6) as archive:
         for path in files:
@@ -110,8 +117,11 @@ def build():
     verify(target, expected)
     sha = hashlib.file_digest(target.open('rb'), 'sha256').hexdigest()
     target.with_suffix('.zip.sha256').write_text(sha + '  ' + target.name + '\n', encoding='ascii')
-    print(json.dumps({'path': str(target), 'bytes': target.stat().st_size,
-                      'sha256': sha, 'files': len(expected)}))
+    shutil.copyfile(target, canonical)
+    canonical.with_suffix('.zip.sha256').write_text(sha + '  ' + canonical.name + '\n', encoding='ascii')
+    print(json.dumps({'version': APP_VERSION, 'top_level_folder': PREFIX.rstrip('/'),
+                      'path': str(target), 'canonical': str(canonical),
+                      'bytes': target.stat().st_size, 'sha256': sha, 'files': len(expected)}))
     return target
 
 

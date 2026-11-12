@@ -1,16 +1,16 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 650" role="img" aria-labelledby="title desc">
 <title id="title">Four steps to start Field Manual Viewer on Windows</title>
-<desc id="desc">Step 1 Download Windows ZIP from GitHub Releases. Step 2 right-click ZIP and select Extract All. Step 3 open the extracted folder and double-click Set-Up-Library. Step 4 choose Download All, then open Start-Field-Manual-Viewer to browse offline.</desc>
+<desc id="desc">Step 1 Download Field Manual Viewer Portable v0.2.12 Windows ZIP from GitHub Releases. Step 2 right-click the ZIP and select Extract All; the extracted folder is named with the version. Step 3 open the Field Manual Viewer Portable v0.2.12 folder and double-click Set-Up-Library. Step 4 choose Download All, then open Start-Field-Manual-Viewer to browse offline.</desc>
 <rect width="960" height="650" rx="22" fill="#f4f4ed"/>
 <text x="40" y="56" fill="#173d30" font-size="32" font-weight="700" font-family="Arial,sans-serif">Getting started — four steps</text>
 <g font-family="Arial,sans-serif">
 <rect x="40" y="86" width="880" height="116" rx="14" fill="#ffffff" stroke="#cbd8c9"/>
 <circle cx="94" cy="144" r="32" fill="#214e3d"/><text x="84" y="156" font-size="34" fill="#fff">1</text>
-<text x="158" y="127" font-size="28" fill="#173d30" font-weight="bold">Download the Windows ZIP</text>
+<text x="158" y="127" font-size="28" fill="#173d30" font-weight="bold">Download the v0.2.12 Windows ZIP</text>
 <text x="158" y="169" font-size="21" fill="#52645c">Use the large download link at the top of this page.</text>
 <rect x="40" y="216" width="880" height="116" rx="14" fill="#ffffff" stroke="#cbd8c9"/>
 <circle cx="94" cy="274" r="32" fill="#214e3d"/><text x="84" y="286" font-size="34" fill="#fff">2</text>
-<text x="158" y="257" font-size="28" fill="#173d30" font-weight="bold">Extract the ZIP file</text>
+<text x="158" y="257" font-size="28" fill="#173d30" font-weight="bold">Extract the versioned folder</text>
 <text x="158" y="299" font-size="21" fill="#52645c">Right-click the ZIP, then choose “Extract All”.</text>
 <rect x="40" y="346" width="880" height="116" rx="14" fill="#ffffff" stroke="#cbd8c9"/>
 <circle cx="94" cy="404" r="32" fill="#214e3d"/><text x="84" y="416" font-size="34" fill="#fff">3</text>

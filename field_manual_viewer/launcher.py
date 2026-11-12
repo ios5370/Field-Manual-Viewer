@@ -106,8 +106,10 @@ def main():
     db=database(); db.close()
     from .indexing import ensure_pdf_lookup
     ensure_pdf_lookup()
+    from . import catalog
     deadline=time.monotonic()+8
     upgrade_requested=False
+    prewarm_thread=None
     while True:
         guard=FileLock('server')
         try:
@@ -152,6 +154,8 @@ def main():
             save_json(state,{'url':url,'token':server.stop_token,'pid':os.getpid(),
                              'root':str(ROOT),'app':'Field Manual Viewer','version':APP_VERSION})
             print('Field Manual Viewer running at '+url,flush=True)
+            prewarm_thread=threading.Thread(target=catalog.prewarm, name='catalog-prewarm', daemon=True)
+            prewarm_thread.start()
             if not opts.no_browser:
                 opener=threading.Timer(.5,open_browser_for_server,args=(server,url,opts.bundled_browser))
                 opener.daemon=True
@@ -165,6 +169,8 @@ def main():
             if getattr(server,'browser_launch_error',None):raise RuntimeError(server.browser_launch_error)
             return
         finally:
+            if prewarm_thread and prewarm_thread.is_alive():
+                prewarm_thread.join(2)
             guard.__exit__(None,None,None)
 
 

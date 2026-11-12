@@ -6,10 +6,11 @@ independent security audit.
 
 ## Automated checks
 
-The v0.2.11 suite contains 81 tests: 80 pass and one optional captured-source audit is skipped,
+The v0.2.12 suite contains 91 tests: 90 pass and one optional captured-source audit is skipped,
 because that audit needs source captures that are not distributed in a clean checkout. The
 suite is offline and self-contained; it builds its own temporary libraries and never reads a
-real archive.
+real archive. The v0.2.12 tests add archive-only and database-loss recovery, cached-first
+catalog behavior, EPUB container hardening, and the indexed-lookup regression coverage.
 
 Coverage includes:
 
@@ -18,7 +19,10 @@ Coverage includes:
 - interrupted and range-resumed transfers, and structural PDF/EPUB validation;
 - persistent test selection and no-repeat test-to-full transitions;
 - concurrent catalog reading, cached-page recovery and metadata precedence;
+- cached-first browsing while archive verification runs in the background;
+- archive-only and database-loss recovery, including last-known-good records;
 - original-file evidence, index readiness and direct PDF-page lookup;
+- indexed-lookup maintenance without full FTS table scans;
 - local HTTP boundaries, path-traversal rejection and per-folder isolation;
 - windowless logging, viewer lifetimes and tab/transfer tracking;
 - safe Library Setup close and start races, Windows sharing conflicts and default-browser
@@ -82,8 +86,11 @@ unused hidden viewer behind.
 ## Packaging and known limits
 
 The release ZIP contains the readable application sources, the launchers, the local browser
-interface, the pinned Python runtime, production dependencies and licence notices. It excludes
-the automated tests, the build tools, the developer-only acceptance and metadata-repair
+interface, the pinned Python runtime, production dependencies and licence notices. The ZIP
+extracts to a versioned top-level folder, e.g. `Field Manual Viewer Portable v0.2.12`; the
+version is derived from `APP_VERSION` at build time. A byte-identical compatibility ZIP named
+`Field-Manual-Viewer-Windows-x64.zip` preserves the README's stable “latest release” link. It
+excludes the automated tests, the build tools, the developer-only acceptance and metadata-repair
 modules, acquired originals, populated databases, search indexes, browser profiles and logs.
 
 Known limits:
@@ -95,6 +102,9 @@ Known limits:
 - Broad full-text searches remain disk and cache dependent; the SQL query has a 20-second
   budget and then asks for a more specific phrase.
 - Scans without embedded text are not OCRed.
+- Database compatibility between v0.2.12 and v0.2.11 has not been established. Do not install
+  v0.2.12 in place and then downgrade to v0.2.11 against the same `data/` folder; keep a
+  separate copy of the older version and library if a fallback is needed.
 - A physical second PC, physical USB-drive moves, every DPI setting, enterprise policy and
   antivirus combination have not all been tested.
 - The bundled runtime is third-party compiled software with public upstream sources and

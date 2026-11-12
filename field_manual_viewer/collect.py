@@ -20,6 +20,29 @@ class CampaignPaused(RuntimeError):
     pass
 
 
+EPUB_MAX_ENTRY_BYTES = 512 * 1024 * 1024
+EPUB_MAX_TOTAL_BYTES = 2 * 1024 * 1024 * 1024
+EPUB_MAX_RATIO = 800
+EPUB_MAX_ENTRIES = 10000
+
+
+def validate_epub_container(archive):
+    """Reject decompression bombs before testzip or text extraction reads them."""
+    infos = archive.infolist()
+    if len(infos) > EPUB_MAX_ENTRIES:
+        raise ValueError('EPUB has too many entries to process safely')
+    total = 0
+    for info in infos:
+        total += info.file_size
+        if info.file_size > EPUB_MAX_ENTRY_BYTES:
+            raise ValueError('EPUB entry is too large to process safely')
+        if info.compress_size and info.file_size > info.compress_size * EPUB_MAX_RATIO:
+            raise ValueError('EPUB compression ratio is unsafe')
+    if total > EPUB_MAX_TOTAL_BYTES:
+        raise ValueError('EPUB uncompressed size is unsafe')
+    return infos
+
+
 def capacity_guard(remaining=0):
     if (ROOT/'data/pause-acquisition').exists():
         raise CampaignPaused('Paused by user; partial files retained')
@@ -46,6 +69,7 @@ def validate(path, fmt, size=None):
         if not sig.startswith(b'PK'):
             raise ValueError('EPUB ZIP signature mismatch')
         with zipfile.ZipFile(path) as z:
+            validate_epub_container(z)
             if z.read('mimetype') != b'application/epub+zip' or z.testzip():
                 raise ValueError('Invalid EPUB mimetype or ZIP CRC')
             if 'META-INF/container.xml' not in z.namelist():

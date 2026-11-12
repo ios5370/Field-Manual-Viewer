@@ -87,9 +87,9 @@ runtime\python\python.exe -m unittest discover -s tests -v
 ```
 
 The suite is self-contained and offline. It creates its own temporary libraries and does not
-read or write any real archive. Current expected result on Windows x64 is 81 tests, one
-optional captured-source audit skipped, because that audit needs private source captures that
-are not distributed.
+read or write any real archive. Current expected result on Windows x64 is 91 tests: 90 pass and
+one optional captured-source audit is skipped, because that audit needs private source captures
+that are not distributed.
 
 Useful focused subsets while developing:
 
@@ -118,11 +118,15 @@ runtime\python\python.exe tools/build_portable.py
 
 Output:
 
-- `build/Field-Manual-Viewer-Windows-x64.zip`
+- `build/Field-Manual-Viewer-Portable-v0.2.12-Windows-x64.zip`
+- `build/Field-Manual-Viewer-Portable-v0.2.12-Windows-x64.zip.sha256`
+- `build/Field-Manual-Viewer-Windows-x64.zip` — a byte-identical compatibility copy for the
+  stable “latest release” download URL
 - `build/Field-Manual-Viewer-Windows-x64.zip.sha256`
 
-The builder packages an **explicit manifest**, not everything in the checkout. It writes a
-single top-level `Field-Manual-Viewer/` folder containing:
+The builder reads `APP_VERSION` from `field_manual_viewer/__init__.py`. The ZIP contains a
+single top-level folder named with that version, for example
+`Field Manual Viewer Portable v0.2.12/`, containing:
 
 - `field_manual_viewer/` application modules and `static/` browser resources;
 - both `.bat` launchers and `Library-Setup.ps1`;
@@ -145,14 +149,14 @@ directories, and that the compressed stream is intact. For a release, also check
 
 ```powershell
 # Recorded checksum
-Get-Content build\Field-Manual-Viewer-Windows-x64.zip.sha256
+Get-Content build\Field-Manual-Viewer-Portable-v0.2.12-Windows-x64.zip.sha256
 
 # Independent verification
-(Get-FileHash build\Field-Manual-Viewer-Windows-x64.zip -Algorithm SHA256).Hash.ToLowerInvariant()
+(Get-FileHash build\Field-Manual-Viewer-Portable-v0.2.12-Windows-x64.zip -Algorithm SHA256).Hash.ToLowerInvariant()
 
 # Inspect the actual entry list
 Add-Type -AssemblyName System.IO.Compression.FileSystem
-[IO.Compression.ZipFile]::OpenRead("$PWD\build\Field-Manual-Viewer-Windows-x64.zip").Entries |
+[IO.Compression.ZipFile]::OpenRead("$PWD\build\Field-Manual-Viewer-Portable-v0.2.12-Windows-x64.zip").Entries |
     ForEach-Object { $_.FullName } | Sort-Object
 ```
 
@@ -177,7 +181,10 @@ The application source itself is pinned by commit.
 1. Update `APP_VERSION` in `field_manual_viewer/__init__.py` and the version shown in
    `README.md`.
 2. Run the full test suite.
-3. Build the ZIP and record its SHA-256.
+3. Build the ZIP and record its SHA-256. The asset name, extracted top-level folder and viewer
+   header all derive from `APP_VERSION`.
 4. Confirm every application file in the ZIP matches the tagged source commit.
-5. Publish a **new** version tag and release. Do not replace the asset of an existing release
-   with different bytes.
+5. Publish a **new** version tag and release using the versioned ZIP, its `.sha256` file and
+   release notes. Do not replace the asset of an existing release with different bytes. Upload
+   the byte-identical compatibility ZIP as well if the stable “latest release” URL must keep
+   working.

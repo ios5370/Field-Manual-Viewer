@@ -33,16 +33,27 @@ def inventory():
     """Read the same ledger as the collector; check local file presence and size."""
     with closing(database()) as db:
         total = db.execute('SELECT count(*) FROM publications').fetchone()[0]
+        all_ids = {r[0] for r in db.execute('SELECT id FROM publications')}
+        reconstructed = db.execute("SELECT count(*) FROM publications WHERE json_extract(metadata,'$._reconstructed')").fetchone()[0]
         files = [dict(r) for r in db.execute('SELECT * FROM files')]
         indexes = {(r['pub_id'], r['format']): dict(r) for r in db.execute('SELECT * FROM index_state')}
         evidence = {(r['pub_id'], r['format']): dict(r) for r in db.execute('SELECT * FROM file_evidence')}
     good, issues, source_errors = {}, [], set()
     verification_needed = 0
+    pending_verification = 0
     repair_needed = 0
     for row in files:
         key = (row['pub_id'], row['format'])
         if row['status'] in SOURCE_ERRORS:
             source_errors.add(key)
+        if row['status'] == 'pending_verification':
+            try:
+                present = original_path(row).is_file()
+            except (OSError, ValueError):
+                present = False
+            if present:
+                pending_verification += 1
+                verification_needed += 1
         if row['status'] in GOOD and row['sha256']:
             try:
                 path = original_path(row)
@@ -70,12 +81,18 @@ def inventory():
             issues.append({'id': key[0], 'format': key[1], 'error': 'Index: ' + index['error']})
     editions = {key[0] for key in good}
     pairs = {key[0] for key in good if (key[0], 'pdf') in good and (key[0], 'epub') in good}
-    missing = max(0, total * 2 - len(good))
+    discovery = load_json(ROOT / 'reports/discovery.json', {})
+    recovered_catalog = bool(total and reconstructed == total)
+    catalog_complete = bool(discovery.get('complete')) or recovered_catalog
+    # A reconstructed library only knows the formats that actually survive.
+    # Do not invent missing EPUBs (or PDFs) that were never present.
+    expected_files = len(files) if recovered_catalog else total * 2
+    missing = max(0, expected_files - len(good))
+    outstanding = len(all_ids - editions) if recovered_catalog else total - len(pairs)
     pending = len(good) - len(indexed)
     test_selection = load_json(ROOT / 'data/test-selection.json', [])
     test_ready = len(test_selection) == 20 and all((identity,fmt) in good and (identity,fmt) in indexed
                   for identity in test_selection for fmt in ('pdf','epub'))
-    catalog_complete = load_json(ROOT / 'reports/discovery.json', {}).get('complete', False)
     active = locked('setup-job') or locked('acquisition') or locked('index')
     job = load_json(ROOT / 'reports/setup-job.json', {})
     campaign = load_json(ROOT / 'reports/campaign.json', {})
@@ -110,8 +127,11 @@ def inventory():
             message = 'The sample is ready. Download the rest of your library when you are ready.'
     from .campaign import storage_plan
     plan=storage_plan(ROOT,persist=False)
-    return {'catalog_complete':catalog_complete,'catalog_expected':load_json(ROOT/'reports/discovery.json',{}).get('advertised',total),
-            'catalog_message':load_json(ROOT/'reports/discovery-progress.json',{}).get('message','Reading catalog metadata.'),
+    catalog_message = load_json(ROOT/'reports/discovery-progress.json',{}).get('message','Reading catalog metadata.')
+    if recovered_catalog:
+        catalog_message = 'Catalog recovered from archived documents.'
+    return {'catalog_complete':catalog_complete,'catalog_expected':discovery.get('advertised',total),
+            'catalog_message':catalog_message,'recovered_catalog':recovered_catalog,
             'test_mode':job.get('action')=='test',
             'test_files_verified':sum((identity,fmt) in good for identity in test_selection for fmt in ('pdf','epub')),
             'test_files_indexed':sum((identity,fmt) in indexed for identity in test_selection for fmt in ('pdf','epub')),
@@ -121,18 +141,20 @@ def inventory():
             'epub_verified': sum(k[1] == 'epub' for k in good),
             'pdf_indexed': sum(k[1] == 'pdf' for k in indexed),
             'epub_indexed': sum(k[1] == 'epub' for k in indexed),
-            'missing_files': missing, 'outstanding_publications': total - len(pairs),
+            'missing_files': missing, 'outstanding_publications': outstanding,
+            'expected_files': expected_files,
             'pending_indexes': pending, 'source_exceptions': len(source_errors),
-            'verification_needed': verification_needed,
+            'verification_needed': verification_needed, 'pending_verification': pending_verification,
             'test_ready': test_ready, 'test_started': bool(test_selection),
             'free_bytes': shutil.disk_usage(ROOT).free, 'issues': issues,
             'last_error': job.get('error', ''), 'updated_utc': now()}
 
 
-def reconcile_hashes(progress=None):
+def reconcile_hashes(progress=None, deep=True):
     """Before acquisition, preserve SHA records and check existing originals locally."""
     with closing(database()) as db:
         rows = [dict(r) for r in db.execute('SELECT * FROM files WHERE sha256 IS NOT NULL')]
+        evidence = {(r['pub_id'], r['format']): dict(r) for r in db.execute('SELECT * FROM file_evidence')}
     issues = []
     for n, row in enumerate(rows, 1):
         from .collect import CampaignPaused
@@ -142,6 +164,8 @@ def reconcile_hashes(progress=None):
             progress(f'Checking saved originals: {n} / {len(rows)}')
         try:
             path = original_path(row)
+            if not deep and original_evidence_current(ROOT, row, evidence.get((row['pub_id'], row['format']), {})):
+                continue
             status = 'missing' if not path.is_file() else ('recovered' if path.stat().st_size == row['bytes'] and digest(path) == row['sha256'] else 'damaged')
         except (OSError, ValueError):
             status = 'missing'
@@ -149,7 +173,8 @@ def reconcile_hashes(progress=None):
         if error:
             issues.append({'id': row['pub_id'], 'format': row['format'], 'error': error, 'sha256': row['sha256']})
         with closing(database()) as db, db:
-            db.execute('UPDATE files SET status=?,error=? WHERE pub_id=? AND format=?', (status, error, row['pub_id'], row['format']))
+            db.execute('UPDATE files SET status=?,error=?,updated=? WHERE pub_id=? AND format=?',
+                       (status, error, now(), row['pub_id'], row['format']))
             if status == 'recovered':
                 db.execute('INSERT OR REPLACE INTO file_evidence VALUES (?,?,?,?,?)',
                            (row['pub_id'], row['format'], row['sha256'], row['bytes'], path.stat().st_mtime_ns))

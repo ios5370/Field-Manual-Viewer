@@ -4,13 +4,19 @@ Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
 [System.Windows.Forms.Application]::EnableVisualStyles()
 $root = $PSScriptRoot
+$versionFile = Join-Path $root 'field_manual_viewer\__init__.py'
+$appVersion = 'unknown'
+if (Test-Path -LiteralPath $versionFile) {
+  $versionLine = Get-Content -LiteralPath $versionFile | Select-String -Pattern 'APP_VERSION' | Select-Object -First 1
+  if ($versionLine -match "'([^']+)'") { $appVersion = $matches[1] }
+}
 $python = Join-Path $root 'runtime\python\python.exe'
 if (-not (Test-Path -LiteralPath $python)) {
   [System.Windows.Forms.MessageBox]::Show('Download the portable Windows ZIP, which includes the application runtime.','Field Manual Viewer') | Out-Null
   exit 1
 }
 $form = New-Object System.Windows.Forms.Form
-$form.Text = 'Field Manual Viewer - Library Setup'
+$form.Text = "Field Manual Viewer v$appVersion - Library Setup"
 $form.Size = New-Object System.Drawing.Size(860,820)
 $form.MinimumSize = New-Object System.Drawing.Size(800,700)
 $form.StartPosition = 'CenterScreen'
@@ -157,7 +163,8 @@ function Apply-Status($s) {
  $countLabels[2].Text="PDFs verified: $($s.pdf_verified)"; $countLabels[3].Text="EPUBs verified: $($s.epub_verified)"
  $countLabels[4].Text="PDFs searchable: $($s.pdf_indexed)"; $countLabels[5].Text="EPUBs searchable: $($s.epub_indexed)"
  $countLabels[6].Text="Publications needing files: $($s.outstanding_publications)"; $countLabels[7].Text="Free space: $([Math]::Round($s.free_bytes/1GB)) GB"
- $saved=$s.pdf_verified+$s.epub_verified; $indexed=$s.pdf_indexed+$s.epub_indexed; $expected=$s.discovered*2
+ $saved=$s.pdf_verified+$s.epub_verified; $indexed=$s.pdf_indexed+$s.epub_indexed
+ $expected=if($s.expected_files){[int]$s.expected_files}else{$s.discovered*2}
  if($s.test_mode){$saved=$s.test_files_verified; $indexed=$s.test_files_indexed; $expected=40}
  $downloadProgress[1].Text=if($s.test_mode){"Test PDF + EPUB files: $saved / 40 (20 publications)"}else{"PDF + EPUB files saved: $saved / $expected"}
  $downloadProgress[2].Value=[Math]::Min(1000,[int](1000*$saved/[Math]::Max(1,$expected)))
