@@ -5,9 +5,9 @@ import time
 from contextlib import closing
 from .core import ROOT, database, save_json, original_evidence_current
 
-def build_index():
+def build_index(formats=None):
     from .indexing import build
-    return build()
+    return build(formats=formats)
 
 
 def search(query, filters=None, limit=50, scope='all'):

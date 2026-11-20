@@ -69,10 +69,16 @@ def _delete_index_rows(db, table, pub_id, fmt, prior):
     db.execute('DELETE FROM index_rows WHERE pub_id=? AND format=?', (pub_id, fmt))
 
 
-def index_one(pub_id, rebuild=False):
+def index_one(pub_id, rebuild=False, formats=None):
     db = database()
     p = json.loads(db.execute('SELECT metadata FROM publications WHERE id=?', (pub_id,)).fetchone()[0])
-    files = db.execute("SELECT * FROM files WHERE pub_id=? AND sha256 IS NOT NULL AND status IN ('complete','skipped_verified','recovered')", (pub_id,)).fetchall()
+    query = ("SELECT * FROM files WHERE pub_id=? AND sha256 IS NOT NULL "
+             "AND status IN ('complete','skipped_verified','recovered')")
+    params = [pub_id]
+    if formats:
+        query += ' AND format IN (' + ','.join('?' for _ in formats) + ')'
+        params.extend(formats)
+    files = db.execute(query, params).fetchall()
     results = []
     for f in files:
         prior = db.execute('SELECT * FROM index_state WHERE pub_id=? AND format=?', (pub_id, f['format'])).fetchone()
@@ -148,16 +154,21 @@ def index_one(pub_id, rebuild=False):
     return results
 
 
-def build(rebuild=False):
+def build(rebuild=False, formats=None):
     results = []
     with FileLock('index'):
         with closing(database()) as db:
-            ids = [r[0] for r in db.execute('SELECT DISTINCT pub_id FROM files WHERE sha256 IS NOT NULL')]
+            query = 'SELECT DISTINCT pub_id FROM files WHERE sha256 IS NOT NULL'
+            params = []
+            if formats:
+                query += ' AND format IN (' + ','.join('?' for _ in formats) + ')'
+                params.extend(formats)
+            ids = [r[0] for r in db.execute(query, params)]
         for n,pub_id in enumerate(ids,1):
             from .collect import capacity_guard
             capacity_guard()
             save_json(ROOT/'reports/indexing-progress.json',{'message':f'Preparing document {n} / {len(ids)}: {pub_id}'})
-            for result in index_one(pub_id, rebuild):
+            for result in index_one(pub_id, rebuild, formats):
                 results.append(result)
                 print(result, flush=True)
             if n % 25 == 0:

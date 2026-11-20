@@ -15,7 +15,8 @@ def main():
     c.add_argument('--type', dest='pub_type')
     c.add_argument('--category', dest='functional_category')
     c.add_argument('--collection')
-    sub.add_parser('index')
+    idx = sub.add_parser('index')
+    idx.add_argument('--formats', help='Comma-separated: pdf,epub,md (default: all)')
     s = sub.add_parser('search')
     s.add_argument('query')
     s.add_argument('--scope', default='all', choices=['all', 'body', 'title', 'toc', 'designation'])
@@ -42,7 +43,13 @@ def main():
         collect(ids, ('pdf', 'epub') if args.format == 'both' else (args.format,))
     elif args.command == 'index':
         from .search import build_index
-        build_index()
+        formats = None
+        if args.formats:
+            formats = tuple(value.strip().lower() for value in args.formats.split(',')
+                            if value.strip().lower() in ('pdf', 'epub', 'md'))
+            if not formats:
+                parser.error('Choose at least one of pdf,epub,md')
+        build_index(formats)
     elif args.command == 'search':
         from .search import search
         print(json.dumps(search(args.query, scope=args.scope), indent=2, ensure_ascii=False))
