@@ -126,11 +126,15 @@ def index_one(pub_id, rebuild=False, formats=None):
                                    [(pub_id,'epub',first+n) for n in range(len(rows))])
             elif f['format'] == 'md':
                 text = (ROOT / f['path']).read_text(encoding='utf8', errors='replace')
-                sections = markdown_sections(text)
-                rows = [(pub_id, section['locator'], section['title'],
-                         markdown_plain_text(section['text'])) for section in sections]
-                if not rows or not any(row[3] for row in rows):
+                body = markdown_plain_text(text)
+                if not body:
                     raise ValueError('Markdown document has no readable text')
+                sections = markdown_sections(text)
+                title = (sections[0]['title'] if sections else '') or p.get('title') or ''
+                # One FTS row per document keeps the initial index fast while
+                # still searching the complete text. The reader still exposes
+                # heading-based sections for navigation.
+                rows = [(pub_id, 'document', title, body)]
                 with db:
                     _delete_index_rows(db, 'md_passages', pub_id, 'md', prior)
                     last=db.execute('SELECT rowid FROM md_passages ORDER BY rowid DESC LIMIT 1').fetchone()

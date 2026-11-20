@@ -119,7 +119,7 @@ class VaultImportTests(unittest.TestCase):
 
         indexing.index_one('book-00')
         with closing(core.database()) as db:
-            self.assertEqual(db.execute("SELECT count(*) FROM md_passages").fetchone()[0], 2)
+            self.assertEqual(db.execute("SELECT count(*) FROM md_passages").fetchone()[0], 1)
             self.assertEqual(db.execute("SELECT count(*) FROM index_state WHERE format='md' AND error IS NULL").fetchone()[0], 1)
         card = catalog.browse({})['results'][0]
         self.assertEqual(card['files'], ['epub', 'md', 'pdf'])
