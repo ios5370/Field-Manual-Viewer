@@ -1,4 +1,4 @@
-﻿# Field Manual Viewer Portable v0.3.0
+# Field Manual Viewer Portable v0.3.0
 
 **Released:** 20 November 2026
 
@@ -58,8 +58,8 @@ Do not install v0.3.0 over an existing library and then run an older version aga
 - Automated suite: 95 tests, 94 passed, 1 optional captured-source audit skipped.
 - Vault import verified against the official `index.csv` SHA-256 values.
 - Portable packaging contains no PDF, EPUB, Markdown manual, database or archive data.
-- SHA-256: `4422150d8c9fe0db091f019028862ccb8ee52cd9991bd37a89a88199dd466907`
-- Size: `31,590,317 bytes`
+- SHA-256: `7cc1bfd99281d8fcba01a43dc921e806624b1cb0ff4fbc21033354fa883f4a8e`
+- Size: `31,590,781 bytes`
 
 ## Assets
 
@@ -70,4 +70,3 @@ Do not install v0.3.0 over an existing library and then run an older version aga
 - `release-notes-v0.3.0.md`
 
 v0.2.12 and the original v0.2.11 release remain available.
-

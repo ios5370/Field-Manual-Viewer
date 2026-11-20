@@ -24,6 +24,7 @@ from . import indexing, lifecycle
 from .discover import export_manifest
 
 SAFE_ID = re.compile(r'[A-Za-z0-9_.-]{1,120}\Z')
+GOOD = ('complete', 'skipped_verified', 'recovered')
 FORMATS = ('pdf', 'epub', 'md')
 BRANCHES = {'army': 'Army', 'joint': 'Joint', 'usmc': 'Marine Corps',
             'navy': 'Navy', 'af': 'Air Force'}
@@ -174,20 +175,23 @@ def _cleanup_stale(db, remote_ids):
     return removed
 
 
-def import_vault(source=None, formats=FORMATS, limit=None, index=True, dry_run=False):
+def import_vault(source=None, formats=FORMATS, limit=None, index=True, dry_run=False,
+                 start=0):
     root = find_source(source)
     index_path = root / 'index.csv'
     release = _release_label(index_path)
     index_sha = digest(index_path)
     with index_path.open(encoding='utf8', newline='') as stream:
-        rows = list(csv.DictReader(stream))
+        all_rows = list(csv.DictReader(stream))
     if limit:
-        rows = rows[:limit]
-    remote_ids = {(row.get('id') or '').strip() for row in rows}
+        all_rows = all_rows[:limit]
+    start = max(0, int(start or 0))
+    rows = all_rows[start:] if start else all_rows
+    remote_ids = {(row.get('id') or '').strip() for row in all_rows}
     report = {
         'state': 'running', 'source': str(root), 'release': release,
         'index_sha256': index_sha, 'started_utc': _now(),
-        'rows': len(rows), 'formats': list(formats), 'files': 0,
+        'rows': len(all_rows), 'start': start, 'formats': list(formats), 'files': 0,
         'skipped': 0, 'errors': [], 'removed': [],
     }
     save_json(ROOT / 'reports/import-vault.json', report)
@@ -207,7 +211,8 @@ def import_vault(source=None, formats=FORMATS, limit=None, index=True, dry_run=F
         with FileLock('acquisition'):
             with closing(database()) as db:
                 now = _now()
-                for n, row in enumerate(rows, 1):
+                for offset, row in enumerate(rows, 1):
+                    n = start + offset
                     pub_id = (row.get('id') or '').strip()
                     if not SAFE_ID.fullmatch(pub_id):
                         report['errors'].append({'id': pub_id, 'error': 'unsafe id'})
@@ -225,10 +230,18 @@ def import_vault(source=None, formats=FORMATS, limit=None, index=True, dry_run=F
                             continue
                         relative = f'archive/{pub_id}/{pub_id}.{fmt}'
                         dest = ROOT / relative
-                        if dest.is_file() and dest.stat().st_size > 0 and digest(dest).lower() == expected_sha.lower():
-                            _record_file(db, pub_id, fmt, relative, expected_sha, dest.stat().st_size, now)
-                            report['skipped'] += 1
-                            continue
+                        if dest.is_file() and dest.stat().st_size > 0:
+                            size = dest.stat().st_size
+                            prior = db.execute('SELECT sha256,bytes,status FROM files '
+                                               'WHERE pub_id=? AND format=?',
+                                               (pub_id, fmt)).fetchone()
+                            trusted = (prior and prior['sha256'] == expected_sha
+                                       and prior['bytes'] == size
+                                       and prior['status'] in GOOD)
+                            if trusted or digest(dest).lower() == expected_sha.lower():
+                                _record_file(db, pub_id, fmt, relative, expected_sha, size, now)
+                                report['skipped'] += 1
+                                continue
                         try:
                             zip_name, member = _member_parts(source_path)
                             zip_path = root / zip_name
@@ -264,7 +277,7 @@ def import_vault(source=None, formats=FORMATS, limit=None, index=True, dry_run=F
                     report['removed'] = _cleanup_stale(db, remote_ids)
                 db.commit()
             export_manifest()
-            discovered = len(rows) if not limit else len(remote_ids)
+            discovered = len(all_rows) if not limit else len(remote_ids)
             save_json(ROOT / 'reports/discovery.json', {
                 'advertised': discovered, 'unique_editions': discovered,
                 'difference': 0, 'complete': not limit, 'errors': [],
@@ -314,6 +327,8 @@ def main():
     parser.add_argument('--formats', default=','.join(FORMATS),
                         help='Comma-separated: pdf,epub,md (default: all)')
     parser.add_argument('--limit', type=int, help='Import only the first N publications')
+    parser.add_argument('--start', type=int, default=0,
+                        help='Resume at this 1-based index.csv row')
     parser.add_argument('--no-index', action='store_true', help='Skip search-index preparation')
     parser.add_argument('--dry-run', action='store_true', help='Validate paths and IDs without copying')
     args = parser.parse_args()
@@ -321,7 +336,8 @@ def main():
                     if value.strip().lower() in FORMATS)
     if not formats:
         parser.error('Choose at least one of pdf,epub,md')
-    result = import_vault(args.source, formats, args.limit, not args.no_index, args.dry_run)
+    result = import_vault(args.source, formats, args.limit, not args.no_index,
+                          args.dry_run, args.start)
     print(json.dumps(result, indent=2, ensure_ascii=False))
 
 
