@@ -87,7 +87,7 @@ runtime\python\python.exe -m unittest discover -s tests -v
 ```
 
 The suite is self-contained and offline. It creates its own temporary libraries and does not
-read or write any real archive. Current expected result on Windows x64 is 95 tests: 94 pass and
+read or write any real archive. Current expected result on Windows x64 is 96 tests: 95 pass and
 one optional captured-source audit is skipped, because that audit needs private source captures
 that are not distributed.
 
@@ -120,8 +120,8 @@ Output:
 
 - `build/Field-Manual-Viewer-Portable-v0.3.0-Windows-x64.zip`
 - `build/Field-Manual-Viewer-Portable-v0.3.0-Windows-x64.zip.sha256`
-- `build/Field-Manual-Viewer-Windows-x64.zip` â€” a byte-identical compatibility copy for the
-  stable â€œlatest releaseâ€ download URL
+- `build/Field-Manual-Viewer-Windows-x64.zip` Ã¢â‚¬â€ a byte-identical compatibility copy for the
+  stable Ã¢â‚¬Å“latest releaseÃ¢â‚¬Â download URL
 - `build/Field-Manual-Viewer-Windows-x64.zip.sha256`
 
 The builder reads `APP_VERSION` from `field_manual_viewer/__init__.py`. The ZIP contains a
@@ -203,5 +203,5 @@ source vault is read-only; no source ZIP or PAR2 file is modified.
 4. Confirm every application file in the ZIP matches the tagged source commit.
 5. Publish a **new** version tag and release using the versioned ZIP, its `.sha256` file and
    release notes. Do not replace the asset of an existing release with different bytes. Upload
-   the byte-identical compatibility ZIP as well if the stable â€œlatest releaseâ€ URL must keep
+   the byte-identical compatibility ZIP as well if the stable Ã¢â‚¬Å“latest releaseÃ¢â‚¬Â URL must keep
    working.

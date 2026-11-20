@@ -87,7 +87,9 @@ def inventory():
     # A reconstructed library only knows the formats that actually survive.
     # Do not invent missing EPUBs (or PDFs) that were never present.
     expected_files = len(files) if recovered_catalog else total * 2
-    missing = max(0, expected_files - len(good))
+    verified_files = len(good) if recovered_catalog else sum(
+        1 for key in good if key[1] in ('pdf', 'epub'))
+    missing = max(0, expected_files - verified_files)
     outstanding = len(all_ids - editions) if recovered_catalog else total - len(pairs)
     pending = len(good) - len(indexed)
     test_selection = load_json(ROOT / 'data/test-selection.json', [])

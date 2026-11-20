@@ -6,7 +6,7 @@ independent security audit.
 
 ## Automated checks
 
-The v0.3.0 suite contains 95 tests: 94 pass and one optional captured-source audit is skipped,
+The v0.3.0 suite contains 96 tests: 95 pass and one optional captured-source audit is skipped,
 because that audit needs source captures that are not distributed in a clean checkout. The
 suite is offline and self-contained; it builds its own temporary libraries and never reads a
 real archive. The v0.3.0 tests add Markdown reading/indexing, vault import and checksum
@@ -93,7 +93,7 @@ the vault importer, the local browser interface, the pinned Python runtime, prod
 dependencies and licence notices. The ZIP extracts to a versioned top-level folder, e.g.
 `Field Manual Viewer Portable v0.3.0`; the version is derived from `APP_VERSION` at build time.
 A byte-identical compatibility ZIP named `Field-Manual-Viewer-Windows-x64.zip` preserves the
-README's stable â€œlatest releaseâ€ link. It excludes the automated tests, the build tools, the
+README's stable Ã¢â‚¬Å“latest releaseÃ¢â‚¬Â link. It excludes the automated tests, the build tools, the
 developer-only acceptance and metadata-repair modules, acquired originals, populated databases,
 search indexes, browser profiles and logs.
 

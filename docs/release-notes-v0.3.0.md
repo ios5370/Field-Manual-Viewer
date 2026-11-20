@@ -55,11 +55,11 @@ Do not install v0.3.0 over an existing library and then run an older version aga
 
 ## Verification
 
-- Automated suite: 95 tests, 94 passed, 1 optional captured-source audit skipped.
+- Automated suite: 96 tests, 95 passed, 1 optional captured-source audit skipped.
 - Vault import verified against the official `index.csv` SHA-256 values.
 - Portable packaging contains no PDF, EPUB, Markdown manual, database or archive data.
-- SHA-256: `7cc1bfd99281d8fcba01a43dc921e806624b1cb0ff4fbc21033354fa883f4a8e`
-- Size: `31,590,781 bytes`
+- SHA-256: `2a34246a1546e8f8c2289b75cbe46f631cdf37853942c517d813a0f5ccbd0d75`
+- Size: `31,590,803 bytes`
 
 ## Assets
 

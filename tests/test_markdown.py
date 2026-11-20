@@ -144,6 +144,17 @@ class VaultImportTests(unittest.TestCase):
         self.assertEqual(result['skipped'], 3)
         self.assertEqual(result['files'], 0)
 
+    def test_markdown_only_index_leaves_pdf_and_epub_for_later(self):
+        vault = self.make_vault()
+        import_vault.import_vault(vault, formats=('pdf', 'epub', 'md'), index=False)
+        indexing.index_one('book-00', formats=('md',))
+        with closing(core.database()) as db:
+            formats = {row[0] for row in db.execute(
+                "SELECT format FROM index_state WHERE pub_id='book-00' AND error IS NULL")}
+        self.assertEqual(formats, {'md'})
+        self.assertEqual(catalog.browse({'q': 'MarkdownNeedle', 'scope': 'body',
+                                         'format': 'md'})['total'], 1)
+
     def test_server_serves_markdown_and_reader_api(self):
         vault = self.make_vault()
         import_vault.import_vault(vault, formats=('pdf', 'epub', 'md'), index=False)

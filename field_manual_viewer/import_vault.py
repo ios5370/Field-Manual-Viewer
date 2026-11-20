@@ -186,7 +186,7 @@ def import_vault(source=None, formats=FORMATS, limit=None, index=True, dry_run=F
     if limit:
         all_rows = all_rows[:limit]
     start = max(0, int(start or 0))
-    rows = all_rows[start:] if start else all_rows
+    rows = all_rows[start - 1:] if start else all_rows
     remote_ids = {(row.get('id') or '').strip() for row in all_rows}
     report = {
         'state': 'running', 'source': str(root), 'release': release,
