@@ -1,0 +1,5 @@
+Spanish -> English translation model
+Derived from the OPUS-MT / Argos Translate package translate-es_en-1_9.
+Original model authors: Jörg Tiedemann and Santhosh Thottingal.
+License: CC-BY 4.0 (model); the BPE implementation is MIT-licensed.
+This model is bundled for offline reference translation only.

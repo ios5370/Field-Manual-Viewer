@@ -15,7 +15,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer as BaseThrea
 from . import APP_VERSION
 from .core import ROOT, database
 from .search import search
-from . import catalog, readers, reconcile
+from . import catalog, readers, reconcile, translation
 from .viewer_lifetime import ViewerLifetime
 
 STATIC = ROOT / 'field_manual_viewer/static'
@@ -115,6 +115,29 @@ class Handler(BaseHTTPRequestHandler):
             elif q.get('scan')=='1': reconcile.ensure_started()
             return self.json(reconcile.report())
         if path=='/api/status': return self.json(catalog.status())
+        if path=='/api/translate':
+            if not translation.available():
+                return self.send(503,'Offline Spanish translation pack is not installed.','text/plain; charset=utf-8')
+            pub_id = q.get('pub_id') or ''
+            fmt = (q.get('format') or '').lower()
+            locator = q.get('locator') or ''
+            if not pub_id or fmt not in ('pdf', 'epub', 'md'):
+                raise ValueError('Choose a PDF, EPUB or Markdown page/section to translate.')
+            try:
+                if fmt == 'pdf':
+                    source = readers.pdf_text(pub_id, int(locator or 1))
+                elif fmt == 'epub':
+                    source = readers.epub_content(pub_id, locator or None)['text']
+                else:
+                    from .markdown_text import plain_text
+                    source = plain_text(readers.md_content(pub_id, locator or None)['text'])
+                result = translation.translate(source)
+            except translation.TranslationUnavailable as error:
+                return self.send(503, str(error), 'text/plain; charset=utf-8')
+            except Exception as error:
+                raise ValueError('Could not extract text for translation: ' + str(error)) from error
+            result.update({'source_language': 'es', 'target_language': 'en'})
+            return self.json(result)
         if path=='/api/catalog': return self.json(catalog.browse(q))
         if path=='/api/search': return self.json(search(q.pop('q',''),q,scope=q.pop('scope','all')))
         if path.startswith('/api/publication/'):

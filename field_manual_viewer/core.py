@@ -114,6 +114,8 @@ def database():
       bytes INTEGER, mtime_ns INTEGER, PRIMARY KEY(pub_id,format));
     CREATE TABLE IF NOT EXISTS index_rows(pub_id TEXT, format TEXT, rowid INTEGER,
       PRIMARY KEY(pub_id,format,rowid));
+    CREATE TABLE IF NOT EXISTS translations(source_sha TEXT, target TEXT, engine TEXT,
+      translation TEXT, created TEXT, PRIMARY KEY(source_sha,target,engine));
                 ''')
                 if db.execute("SELECT count(*) FROM sqlite_master WHERE name IN ('pdf_pages','reader_lookup')").fetchone()[0]!=2:
                     db.executescript('BEGIN; CREATE TABLE IF NOT EXISTS pdf_pages(pub_id TEXT,page INTEGER,passage_rowid INTEGER,PRIMARY KEY(pub_id,page)) WITHOUT ROWID; CREATE TABLE IF NOT EXISTS reader_lookup(version TEXT PRIMARY KEY); COMMIT;')
@@ -147,6 +149,10 @@ def database():
             if not db.execute("SELECT 1 FROM sqlite_master WHERE name='md_passages'").fetchone():
                 db.execute('''CREATE VIRTUAL TABLE md_passages USING fts5(
                     pub_id UNINDEXED, locator UNINDEXED, title, body, tokenize='unicode61')''')
+                db.commit()
+            if not db.execute("SELECT 1 FROM sqlite_master WHERE name='translations'").fetchone():
+                db.execute('''CREATE TABLE translations(source_sha TEXT, target TEXT, engine TEXT,
+                    translation TEXT, created TEXT, PRIMARY KEY(source_sha,target,engine))''')
                 db.commit()
             # Seed the cached presence ledger from durable evidence when upgrading an
             # older library.  The next background scan still checks the real files.

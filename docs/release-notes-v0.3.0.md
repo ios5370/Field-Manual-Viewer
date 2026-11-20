@@ -53,13 +53,24 @@ metadata.
 Do not install v0.3.0 over an existing library and then run an older version against the same
 `data/` folder. Keep older versions and their libraries separate.
 
+## Offline Spanish translation
+
+v0.3.0 also includes an optional, fully offline Spanish-to-English translation pack for
+reference reading. The reader has a **Translate this page/section to English** button. It
+translates extracted PDF text, EPUB sections and Markdown sections, shows the original beside
+the translation, and caches results locally. Nothing is sent to a cloud service.
+
+The pack is a local CTranslate2 OPUS-MT model. The first load takes a few seconds; translation
+is CPU-only. It is intended for gisting and reference, not publication-quality translation.
+Scanned PDFs without a text layer still need OCR.
+
 ## Verification
 
 - Automated suite: 96 tests, 95 passed, 1 optional captured-source audit skipped.
 - Vault import verified against the official `index.csv` SHA-256 values.
 - Portable packaging contains no PDF, EPUB, Markdown manual, database or archive data.
-- SHA-256: `398a01a2b06fee9443aea6b598e0ba14ecf64f4f2ba6957f07a39372d884b8f4`
-- Size: `31,592,145 bytes`
+- SHA-256: `6ff15e586a3680b4e54933d31a461ff5e9255b2dea3ea5bb925fc870ff9cc0f3`
+- Size: `353,736,148 bytes`
 
 ## Assets
 

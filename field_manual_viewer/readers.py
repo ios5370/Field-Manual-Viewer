@@ -22,6 +22,24 @@ def archived(pub_id, fmt):
     return path
 
 
+def pdf_text(pub_id, page):
+    import pypdfium2 as pdfium
+    path = archived(pub_id, 'pdf')
+    with PDF_LOCK:
+        doc = pdfium.PdfDocument(path)
+        try:
+            if page < 1 or page > len(doc):
+                raise ValueError('Page outside document')
+            page_obj = doc[page - 1]
+            textpage = page_obj.get_textpage()
+            try:
+                return textpage.get_text_bounded()
+            finally:
+                textpage.close(); page_obj.close()
+        finally:
+            doc.close()
+
+
 def pdf_image(pub_id, page, scale=1.4):
     import pypdfium2 as pdfium
     path = archived(pub_id,'pdf')

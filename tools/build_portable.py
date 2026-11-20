@@ -34,6 +34,7 @@ ROOT_FILES = (
 PACKAGE_FILES = (
     '__init__.py',
     '__main__.py',
+    'apply_bpe.py',
     'campaign.py',
     'catalog.py',
     'collect.py',
@@ -59,6 +60,7 @@ PACKAGE_FILES = (
     'setup_launcher.py',
     'source.py',
     'status.py',
+    'translation.py',
     'viewer_lifetime.py',
     'static/app.js',
     'static/index.html',
@@ -107,6 +109,9 @@ def build():
 
     manifest = [ROOT / name for name in ROOT_FILES]
     manifest += [package / name for name in PACKAGE_FILES]
+    translation_dir = ROOT / 'translation'
+    if translation_dir.is_dir():
+        manifest += [path for path in translation_dir.rglob('*') if path.is_file()]
     missing = [str(p.relative_to(ROOT)) for p in manifest if not p.is_file()]
     if missing:
         raise RuntimeError('Manifest entries are missing: ' + ', '.join(missing))

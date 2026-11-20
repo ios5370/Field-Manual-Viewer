@@ -193,6 +193,13 @@ runtime\python\python.exe -m field_manual_viewer.import_vault `
 Add `--no-index` to import without preparing search, or `--limit N` for a trial run. The
 source vault is read-only; no source ZIP or PAR2 file is modified.
 
+## Optional offline translation pack
+
+The build includes `translation/es_en/` when that folder is present. It contains the
+CTranslate2 model, BPE codes and attribution. The model binaries are intentionally excluded
+from source control because of their size; place the pack in the checkout before building if
+you want the translation button in the resulting ZIP.
+
 ## Preparing a release
 
 1. Update `APP_VERSION` in `field_manual_viewer/__init__.py` and the version shown in
