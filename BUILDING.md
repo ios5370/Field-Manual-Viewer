@@ -87,7 +87,7 @@ runtime\python\python.exe -m unittest discover -s tests -v
 ```
 
 The suite is self-contained and offline. It creates its own temporary libraries and does not
-read or write any real archive. Current expected result on Windows x64 is 91 tests: 90 pass and
+read or write any real archive. Current expected result on Windows x64 is 95 tests: 94 pass and
 one optional captured-source audit is skipped, because that audit needs private source captures
 that are not distributed.
 
@@ -118,15 +118,15 @@ runtime\python\python.exe tools/build_portable.py
 
 Output:
 
-- `build/Field-Manual-Viewer-Portable-v0.2.12-Windows-x64.zip`
-- `build/Field-Manual-Viewer-Portable-v0.2.12-Windows-x64.zip.sha256`
-- `build/Field-Manual-Viewer-Windows-x64.zip` — a byte-identical compatibility copy for the
-  stable “latest release” download URL
+- `build/Field-Manual-Viewer-Portable-v0.3.0-Windows-x64.zip`
+- `build/Field-Manual-Viewer-Portable-v0.3.0-Windows-x64.zip.sha256`
+- `build/Field-Manual-Viewer-Windows-x64.zip` â€” a byte-identical compatibility copy for the
+  stable â€œlatest releaseâ€ download URL
 - `build/Field-Manual-Viewer-Windows-x64.zip.sha256`
 
 The builder reads `APP_VERSION` from `field_manual_viewer/__init__.py`. The ZIP contains a
 single top-level folder named with that version, for example
-`Field Manual Viewer Portable v0.2.12/`, containing:
+`Field Manual Viewer Portable v0.3.0/`, containing:
 
 - `field_manual_viewer/` application modules and `static/` browser resources;
 - both `.bat` launchers and `Library-Setup.ps1`;
@@ -144,19 +144,20 @@ shipped to people who only want to read manuals.
 
 ## 6. Verify the build
 
-The builder already asserts the archive has no PDF, EPUB or SQLite entries, no library data
-directories, and that the compressed stream is intact. For a release, also check the bytes:
+The builder already asserts the archive has no PDF, EPUB, Markdown-document or SQLite entries,
+no library data directories, and that the compressed stream is intact. For a release, also check
+the bytes:
 
 ```powershell
 # Recorded checksum
-Get-Content build\Field-Manual-Viewer-Portable-v0.2.12-Windows-x64.zip.sha256
+Get-Content build\Field-Manual-Viewer-Portable-v0.3.0-Windows-x64.zip.sha256
 
 # Independent verification
-(Get-FileHash build\Field-Manual-Viewer-Portable-v0.2.12-Windows-x64.zip -Algorithm SHA256).Hash.ToLowerInvariant()
+(Get-FileHash build\Field-Manual-Viewer-Portable-v0.3.0-Windows-x64.zip -Algorithm SHA256).Hash.ToLowerInvariant()
 
 # Inspect the actual entry list
 Add-Type -AssemblyName System.IO.Compression.FileSystem
-[IO.Compression.ZipFile]::OpenRead("$PWD\build\Field-Manual-Viewer-Portable-v0.2.12-Windows-x64.zip").Entries |
+[IO.Compression.ZipFile]::OpenRead("$PWD\build\Field-Manual-Viewer-Portable-v0.3.0-Windows-x64.zip").Entries |
     ForEach-Object { $_.FullName } | Sort-Object
 ```
 
@@ -176,6 +177,22 @@ Builds are **not** currently claimed to be byte-for-byte reproducible: the Pytho
 ZIP and the pip-resolved transitive packages are mutable inputs, and ZIP timestamps vary.
 The application source itself is pinned by commit.
 
+## Importing the Field Manual Vault
+
+The portable ZIP includes `Import-Field-Manual-Vault.bat` and
+`field_manual_viewer/import_vault.py`. The importer reads the release `index.csv`, opens the
+per-topic ZIPs, verifies each member against its published SHA-256, and writes a canonical
+`archive/<publication-id>/<publication-id>.<pdf|epub|md>` tree. It is resumable and skips files
+whose local checksum already matches.
+
+```powershell
+runtime\python\python.exe -m field_manual_viewer.import_vault `
+  --source "D:\Field Manual Vault\T.Rex Arms Field Manual Vault"
+```
+
+Add `--no-index` to import without preparing search, or `--limit N` for a trial run. The
+source vault is read-only; no source ZIP or PAR2 file is modified.
+
 ## Preparing a release
 
 1. Update `APP_VERSION` in `field_manual_viewer/__init__.py` and the version shown in
@@ -186,5 +203,5 @@ The application source itself is pinned by commit.
 4. Confirm every application file in the ZIP matches the tagged source commit.
 5. Publish a **new** version tag and release using the versioned ZIP, its `.sha256` file and
    release notes. Do not replace the asset of an existing release with different bytes. Upload
-   the byte-identical compatibility ZIP as well if the stable “latest release” URL must keep
+   the byte-identical compatibility ZIP as well if the stable â€œlatest releaseâ€ URL must keep
    working.

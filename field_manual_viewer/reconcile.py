@@ -25,7 +25,7 @@ from .indexing import ENGINE
 GOOD = ('complete', 'skipped_verified', 'recovered')
 UNSUPPORTED_MARKERS = ('.part', '.partial', '.tmp', '.temp', '.rejected',
                        '.corrupt-', '.crdownload', '.download', '.filepart')
-SUPPORTED = {'.pdf': 'pdf', '.epub': 'epub'}
+SUPPORTED = {'.pdf': 'pdf', '.epub': 'epub', '.md': 'md'}
 SAFE_ID = re.compile(r'[A-Za-z0-9_.-]{1,120}\Z')
 SCAN_INTERVAL = 8.0
 RETRY_DELAY = 0.5
@@ -482,6 +482,12 @@ def _embedded_metadata(path, fmt):
             return {key: str(meta.get(source) or '').strip()
                     for key, source in (('title', '/Title'), ('creator', '/Author'),
                                         ('date', '/CreationDate'))}
+        if fmt == 'md':
+            from .markdown_text import sections, split_front_matter
+            text = path.read_text(encoding='utf8', errors='replace')
+            front, _ = split_front_matter(text)
+            title = front.get('title') or sections(text)[0]['title']
+            return {'title': '' if title == 'Document' else title[:300]}
         with zipfile.ZipFile(path) as archive:
             container_data = archive.read('META-INF/container.xml')
             if b'<!entity' in container_data.lower():

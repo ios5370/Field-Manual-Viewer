@@ -22,6 +22,7 @@ PREFIX = f'Field Manual Viewer Portable v{APP_VERSION}/'
 ROOT_FILES = (
     'Start-Field-Manual-Viewer.bat',
     'Set-Up-Library.bat',
+    'Import-Field-Manual-Vault.bat',
     'Library-Setup.ps1',
     'README.md',
     'LICENSE',
@@ -39,8 +40,10 @@ PACKAGE_FILES = (
     'discover.py',
     'download.py',
     'indexing.py',
+    'import_vault.py',
     'launcher.py',
     'lifecycle.py',
+    'markdown_text.py',
     'network.py',
     'notifier.py',
     'parallel.py',
@@ -64,8 +67,19 @@ PACKAGE_FILES = (
 # offline acceptance harness and repair_metadata.py is an offline catalog-repair helper.
 DEV_ONLY_PACKAGE_FILES = ('acceptance.py', 'repair_metadata.py')
 
-FORBIDDEN_SUFFIXES = ('.pdf', '.epub', '.sqlite', '.sqlite-wal', '.sqlite-shm')
+FORBIDDEN_SUFFIXES = ('.pdf', '.epub', '.md', '.sqlite', '.sqlite-wal', '.sqlite-shm')
+ALLOWED_MARKDOWN = ('readme.md', 'third-party.md')
 FORBIDDEN_TOP_LEVEL = ('data', 'archive', 'reports', 'tmp', '.git', 'tests', 'tools', 'docs')
+
+
+def forbidden_entry(relative):
+    lower = str(relative).replace('\\', '/').lower()
+    if lower.endswith(('.pdf', '.epub', '.sqlite', '.sqlite-wal', '.sqlite-shm')):
+        return True
+    if lower.endswith('.md'):
+        # Runtime packages ship licence Markdown; user documents must not.
+        return Path(lower).name not in ALLOWED_MARKDOWN and not lower.startswith('runtime/')
+    return False
 
 
 def runtime_files(runtime):
@@ -106,7 +120,7 @@ def build():
             rel = path.relative_to(ROOT).as_posix()
             if rel.split('/')[0] in FORBIDDEN_TOP_LEVEL:
                 raise RuntimeError('Private library data cannot be packaged: ' + rel)
-            if path.name.lower().endswith(FORBIDDEN_SUFFIXES):
+            if forbidden_entry(rel):
                 raise RuntimeError('Documents and databases cannot be packaged: ' + rel)
             name = PREFIX + rel
             if path.name.endswith('._pth'):
@@ -147,7 +161,7 @@ def verify(target, expected):
         rel = name[len(PREFIX):]
         if rel.split('/')[0] in FORBIDDEN_TOP_LEVEL:
             raise RuntimeError('Private library directory in the archive: ' + name)
-        if name.lower().endswith(FORBIDDEN_SUFFIXES):
+        if forbidden_entry(rel):
             raise RuntimeError('Document or database in the archive: ' + name)
 
 

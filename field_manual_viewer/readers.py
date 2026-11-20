@@ -5,6 +5,7 @@ import threading
 import urllib.parse
 from .core import ROOT, database, original_evidence_current
 from .indexing import epub_sections
+from .markdown_text import sections as markdown_sections
 
 PDF_LOCK = threading.RLock()
 
@@ -42,3 +43,13 @@ def epub_content(pub_id, locator=None):
     selected = next((s for s in sections if s[0] == locator), sections[0])
     return {'sections':[{'locator':s[0],'title':s[1]} for s in sections],
             'locator':selected[0],'title':selected[1],'text':selected[2]}
+
+
+def md_content(pub_id, locator=None):
+    text = archived(pub_id, 'md').read_text(encoding='utf8', errors='replace')
+    sections = markdown_sections(text)
+    selected = next((s for s in sections if s['locator'] == locator), sections[0])
+    return {'sections': [{'locator': s['locator'], 'title': s['title'], 'level': s['level']}
+                         for s in sections],
+            'locator': selected['locator'], 'title': selected['title'],
+            'level': selected['level'], 'text': selected['text']}

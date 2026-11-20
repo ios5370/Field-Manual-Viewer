@@ -13,7 +13,7 @@ def report():
         pubs = db.execute('SELECT COUNT(*) FROM publications').fetchone()[0]
     good = [f for f in files if f['sha256'] and (ROOT / f['path']).exists()]
     by_format = {fmt: {'files': len([f for f in good if f['format'] == fmt]),
-                      'bytes': sum(f['bytes'] for f in good if f['format'] == fmt)} for fmt in ('pdf', 'epub')}
+                      'bytes': sum(f['bytes'] for f in good if f['format'] == fmt)} for fmt in ('pdf', 'epub', 'md')}
     checksums = collections.defaultdict(list)
     for f in good:
         checksums[f['sha256']].append(f['path'])

@@ -74,6 +74,13 @@ def validate(path, fmt, size=None):
                 raise ValueError('Invalid EPUB mimetype or ZIP CRC')
             if 'META-INF/container.xml' not in z.namelist():
                 raise ValueError('EPUB container missing')
+    elif fmt == 'md':
+        try:
+            text = path.read_text(encoding='utf8')
+        except UnicodeDecodeError as error:
+            raise ValueError('Markdown document is not valid UTF-8') from error
+        if not text.strip():
+            raise ValueError('Markdown document is empty')
     else:
         raise ValueError('Unsupported archive format')
     return digest(path)
@@ -112,7 +119,8 @@ def transfer(client, url, dest, fmt, expected=None, interrupt_after=None):
     with client.open(url, headers) as r:
         content_type = r.headers.get('Content-Type', '').split(';')[0].lower()
         allowed = {'pdf': ('application/pdf', 'application/octet-stream'),
-                   'epub': ('application/epub+zip', 'application/zip', 'application/octet-stream')}
+                   'epub': ('application/epub+zip', 'application/zip', 'application/octet-stream'),
+                   'md': ('text/markdown', 'text/plain', 'application/octet-stream')}
         if content_type not in allowed[fmt]:
             raise ValueError(f'Unexpected content type: {content_type}')
         if r.status == 206:

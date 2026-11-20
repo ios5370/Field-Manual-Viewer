@@ -24,7 +24,9 @@ def storage_plan(root=None, persist=True):
     with closing(database()) as db:
         saved=[dict(r) for r in db.execute("SELECT * FROM files WHERE sha256 IS NOT NULL AND status IN ('complete','skipped_verified','recovered')")]
         files=[r for r in saved if r['pub_id'] in sample]
-        pages=sum(r[0] or 0 for r in db.execute('SELECT pages FROM extraction WHERE pub_id IN ('+','.join('?' for _ in sample)+')',sample))
+        pages=0
+        if sample:
+            pages=sum(r[0] or 0 for r in db.execute('SELECT pages FROM extraction WHERE pub_id IN ('+','.join('?' for _ in sample)+')',sample))
         total=db.execute('SELECT count(*) FROM publications').fetchone()[0]
     archive=sum(r['bytes'] or 0 for r in files)
     per_edition=round(archive/max(len(sample),1)*total)

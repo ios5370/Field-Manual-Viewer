@@ -17,7 +17,7 @@ if (-not (Test-Path -LiteralPath $python)) {
 }
 $form = New-Object System.Windows.Forms.Form
 $form.Text = "Field Manual Viewer v$appVersion - Library Setup"
-$form.Size = New-Object System.Drawing.Size(860,820)
+$form.Size = New-Object System.Drawing.Size(860,860)
 $form.MinimumSize = New-Object System.Drawing.Size(800,700)
 $form.StartPosition = 'CenterScreen'
 $form.Font = New-Object System.Drawing.Font('Segoe UI',11)
@@ -28,7 +28,7 @@ $layout = New-Object System.Windows.Forms.TableLayoutPanel
 $layout.Dock = 'Top'; $layout.AutoSize = $true
 $layout.Padding = New-Object System.Windows.Forms.Padding(24)
 $layout.ColumnCount = 1; $layout.RowCount = 10
-foreach ($height in @(36,54,30,148,48,48,60,108,60,74)) {
+foreach ($height in @(36,54,30,172,48,48,60,108,60,74)) {
  $layout.RowStyles.Add((New-Object System.Windows.Forms.RowStyle([System.Windows.Forms.SizeType]::Absolute,$height))) | Out-Null
 }
 $form.Controls.Add($layout)
@@ -50,10 +50,10 @@ $folderTip=New-Object System.Windows.Forms.ToolTip
 $folderTip.SetToolTip($intro,$root)
 $layout.Controls.Add($intro,0,2)
 $counts=New-Object System.Windows.Forms.TableLayoutPanel
-$counts.Dock='Fill'; $counts.ColumnCount=2; $counts.RowCount=4
+$counts.Dock='Fill'; $counts.ColumnCount=2; $counts.RowCount=5
 foreach($i in 0..1){$counts.ColumnStyles.Add((New-Object System.Windows.Forms.ColumnStyle([System.Windows.Forms.SizeType]::Percent,50)))|Out-Null}
 $countLabels=@()
-foreach($i in 0..7){$label=New-Label ''; $countLabels+=,$label; $counts.Controls.Add($label,($i%2),[Math]::Floor($i/2))}
+foreach($i in 0..9){$label=New-Label ''; $countLabels+=,$label; $counts.Controls.Add($label,($i%2),[Math]::Floor($i/2))}
 $layout.Controls.Add($counts,0,3)
 function New-ProgressRow($text) {
  $panel=New-Object System.Windows.Forms.TableLayoutPanel
@@ -162,7 +162,8 @@ function Apply-Status($s) {
  $countLabels[0].Text="Publications found: $($s.discovered) / $($s.catalog_expected)"; $countLabels[1].Text="Publications offline: $($s.available)"
  $countLabels[2].Text="PDFs verified: $($s.pdf_verified)"; $countLabels[3].Text="EPUBs verified: $($s.epub_verified)"
  $countLabels[4].Text="PDFs searchable: $($s.pdf_indexed)"; $countLabels[5].Text="EPUBs searchable: $($s.epub_indexed)"
- $countLabels[6].Text="Publications needing files: $($s.outstanding_publications)"; $countLabels[7].Text="Free space: $([Math]::Round($s.free_bytes/1GB)) GB"
+ $countLabels[6].Text="Markdown verified: $($s.md_verified)"; $countLabels[7].Text="Markdown searchable: $($s.md_indexed)"
+ $countLabels[8].Text="Publications needing files: $($s.outstanding_publications)"; $countLabels[9].Text="Free space: $([Math]::Round($s.free_bytes/1GB)) GB"
  $saved=$s.pdf_verified+$s.epub_verified; $indexed=$s.pdf_indexed+$s.epub_indexed
  $expected=if($s.expected_files){[int]$s.expected_files}else{$s.discovered*2}
  if($s.test_mode){$saved=$s.test_files_verified; $indexed=$s.test_files_indexed; $expected=40}

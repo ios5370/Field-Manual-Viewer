@@ -142,9 +142,11 @@ class Handler(BaseHTTPRequestHandler):
             return self.json({'text':row[0] if row else '', 'total':total[0]})
         if path.startswith('/api/epub/'):
             return self.json(readers.epub_content(path[10:],q.get('locator')))
+        if path.startswith('/api/md/'):
+            return self.json(readers.md_content(path[8:],q.get('locator')))
         if path.startswith('/files/'):
             file=(ROOT/path[7:]).resolve()
-            if not file.is_relative_to((ROOT/'archive').resolve()) or file.suffix not in ('.pdf','.epub') or not file.is_file():
+            if not file.is_relative_to((ROOT/'archive').resolve()) or file.suffix.lower() not in ('.pdf','.epub','.md') or not file.is_file():
                 raise FileNotFoundError('Not found')
             size,start,end=file.stat().st_size,0,file.stat().st_size-1
             ranged=self.headers.get('Range')
@@ -157,7 +159,10 @@ class Handler(BaseHTTPRequestHandler):
                 if start>end or start>=size: return self.send(416,b'',extra={'Content-Range':f'bytes */{size}'})
             with self.server.viewer_lifetime.connection():
                 self.send_response(206 if ranged else 200)
-                self.send_header('Content-Type','application/pdf' if file.suffix=='.pdf' else 'application/epub+zip')
+                content_type = ('application/pdf' if file.suffix == '.pdf' else
+                                'application/epub+zip' if file.suffix == '.epub' else
+                                'text/markdown; charset=utf-8')
+                self.send_header('Content-Type',content_type)
                 self.send_header('Content-Length',str(end-start+1));self.send_header('Accept-Ranges','bytes')
                 self.send_header('X-Content-Type-Options','nosniff')
                 if ranged: self.send_header('Content-Range',f'bytes {start}-{end}/{size}')

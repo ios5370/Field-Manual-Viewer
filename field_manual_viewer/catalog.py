@@ -112,7 +112,7 @@ def status():
     total = len(data['publications'])
     good={(f['pub_id'],f['format']):f for f in files if original_available(f,evidence,presence)}
     counts={fmt:{'format':fmt,'files':sum(key[1]==fmt for key in good),
-                 'bytes':sum(f['bytes'] for key,f in good.items() if key[1]==fmt)} for fmt in ('pdf','epub')}
+                 'bytes':sum(f['bytes'] for key,f in good.items() if key[1]==fmt)} for fmt in ('pdf','epub','md')}
     indexed=dict(collections.Counter(i['format'] for i in indexes if i['engine']==ENGINE and (i['pub_id'],i['format']) in good
                   and i['sha256']==good[(i['pub_id'],i['format'])]['sha256']))
     acquired=len({key[0] for key in good})
@@ -197,7 +197,9 @@ def _browse(db,params,data=None):
     if params.get('availability', 'archived') == 'archived':
         ids &= set(available)
     query, scope = params.get('q', '').strip(), params.get('scope', 'all')
-    fmt = params.get('format', 'both')
+    fmt = params.get('format', 'all')
+    wanted = {'all': {'pdf', 'epub', 'md'}, 'both': {'pdf', 'epub'},
+              'pdf': {'pdf'}, 'epub': {'epub'}, 'md': {'md'}}.get(fmt, {'pdf', 'epub'})
     hits, scores, catalog_matches = collections.defaultdict(list), {}, set()
     content_matches=set()
     if query:
@@ -214,9 +216,9 @@ def _browse(db,params,data=None):
         if ids and scope in ('all','body','toc'):
             # Group cheap match counts first. Rank passages only for the visible
             # publications, rather than scoring/sorting every archived page.
-            for table,kind in (('passages','pdf'),('epub_passages','epub')):
-                if fmt not in ('both',kind) or (kind=='epub' and scope=='toc'):continue
-                match_expr=expr if scope=='all' or kind=='epub' else scope+' : ('+expr+')'
+            for table,kind in (('passages','pdf'),('epub_passages','epub'),('md_passages','md')):
+                if kind not in wanted or (kind in ('epub','md') and scope=='toc'):continue
+                match_expr=expr if scope=='all' or kind in ('epub','md') else scope+' : ('+expr+')'
                 for r in db.execute(f'SELECT pub_id,count(*) AS matches FROM {table} WHERE {table} MATCH ? GROUP BY pub_id',(match_expr,)):
                     identity=r['pub_id']
                     if identity not in ids or kind not in available[identity] or kind not in indexed[identity]:continue
@@ -240,10 +242,10 @@ def _browse(db,params,data=None):
     page = min(page, pages)
     selected=ordered[(page-1)*size:page*size]
     if query and scope in ('all','body','toc'):
-        for table,kind,locator,ranking in (('passages','pdf','page','bm25(passages,0,0,8,10,5,1)'),('epub_passages','epub','locator','bm25(epub_passages)')):
+        for table,kind,locator,ranking in (('passages','pdf','page','bm25(passages,0,0,8,10,5,1)'),('epub_passages','epub','locator','bm25(epub_passages)'),('md_passages','md','locator','bm25(md_passages)')):
             targets=[i for i in selected if kind in available[i] and kind in indexed[i] and i in content_matches and len(hits[i])<3]
-            if not targets or fmt not in ('both',kind) or (kind=='epub' and scope=='toc'):continue
-            match_expr=expr if scope=='all' or kind=='epub' else scope+' : ('+expr+')'
+            if not targets or kind not in wanted or (kind in ('epub','md') and scope=='toc'):continue
+            match_expr=expr if scope=='all' or kind in ('epub','md') else scope+' : ('+expr+')'
             placeholders=','.join('?' for _ in targets)
             for r in db.execute(f'SELECT rowid,pub_id,{locator},{ranking} AS score FROM {table} WHERE {table} MATCH ? AND pub_id IN ({placeholders}) ORDER BY score',[match_expr,*targets]):
                 identity=r['pub_id']
@@ -256,7 +258,12 @@ def _browse(db,params,data=None):
     for i in selected:
         p = publications[i]
         for hit in hits[i]:
-            table,column,match_expr=('passages',5,expr if scope=='all' else scope+' : ('+expr+')') if hit['format']=='pdf' else ('epub_passages',3,expr)
+            if hit['format'] == 'pdf':
+                table, column, match_expr = 'passages', 5, (expr if scope == 'all' else scope + ' : (' + expr + ')')
+            elif hit['format'] == 'epub':
+                table, column, match_expr = 'epub_passages', 3, expr
+            else:
+                table, column, match_expr = 'md_passages', 3, expr
             row=db.execute(f"SELECT snippet({table},{column},char(1),char(2),' ... ',40) FROM {table} WHERE {table} MATCH ? AND rowid=?",(match_expr,hit.pop('_rowid'))).fetchone()
             hit['excerpt']=row[0] if row else ''
         rows.append({k:p.get(k) for k in ('id','title','designation','branch','branch_label','edition_year','edition_date',

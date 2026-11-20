@@ -139,8 +139,10 @@ def inventory():
             'discovered': total, 'available': len(editions), 'complete_pairs': len(pairs),
             'pdf_verified': sum(k[1] == 'pdf' for k in good),
             'epub_verified': sum(k[1] == 'epub' for k in good),
+            'md_verified': sum(k[1] == 'md' for k in good),
             'pdf_indexed': sum(k[1] == 'pdf' for k in indexed),
             'epub_indexed': sum(k[1] == 'epub' for k in indexed),
+            'md_indexed': sum(k[1] == 'md' for k in indexed),
             'missing_files': missing, 'outstanding_publications': outstanding,
             'expected_files': expected_files,
             'pending_indexes': pending, 'source_exceptions': len(source_errors),
@@ -190,5 +192,6 @@ def finalize():
     save_json(ROOT / 'data/completion.json', {'ready': ready, 'recorded_utc': now(),
               'discovered': state['discovered'], 'verified_files': state['pdf_verified'] + state['epub_verified'],
               'indexed_files': state['pdf_indexed'] + state['epub_indexed'],
+              'md_verified_files': state['md_verified'], 'md_indexed_files': state['md_indexed'],
               'missing_files': state['missing_files'], 'exceptions': state['issues']})
     return state

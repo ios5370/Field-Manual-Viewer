@@ -7,6 +7,7 @@ import xml.etree.ElementTree as ET
 import pypdfium2 as pdfium
 from bs4 import BeautifulSoup
 from .core import ROOT, database, save_json, FileLock
+from .markdown_text import plain_text as markdown_plain_text, sections as markdown_sections
 
 ENGINE = 'pdfium-5.15.1-epub-spine-v1'
 
@@ -82,7 +83,8 @@ def index_one(pub_id, rebuild=False):
             if f['format'] == 'pdf':
                 doc = pdfium.PdfDocument(ROOT / f['path'])
                 try:
-                    for i in range(len(doc)):
+                    page_total = len(doc)
+                    for i in range(page_total):
                         page = doc[i]
                         tp = page.get_textpage()
                         text = tp.get_text_bounded()
@@ -101,7 +103,10 @@ def index_one(pub_id, rebuild=False):
                     db.execute('DELETE FROM pdf_pages WHERE pub_id=?',(pub_id,))
                     db.executemany('INSERT INTO pdf_pages VALUES (?,?,?)',[(pub_id,row[1],first+n) for n,row in enumerate(rows)])
                     db.execute('INSERT OR REPLACE INTO extraction VALUES (?,?,?,NULL)', (pub_id, len(rows), sparse))
-            else:
+                    if not p.get('page_count'):
+                        p['page_count'] = page_total
+                        db.execute('UPDATE publications SET metadata=? WHERE id=?', (json.dumps(p), pub_id))
+            elif f['format'] == 'epub':
                 rows = [(pub_id, loc, title, text) for loc, title, text in epub_sections(ROOT / f['path'])]
                 if not rows:
                     raise ValueError('EPUB has no readable spine sections')
@@ -113,6 +118,23 @@ def index_one(pub_id, rebuild=False):
                                    [(first+n,*row) for n,row in enumerate(rows)])
                     db.executemany('INSERT INTO index_rows VALUES (?,?,?)',
                                    [(pub_id,'epub',first+n) for n in range(len(rows))])
+            elif f['format'] == 'md':
+                text = (ROOT / f['path']).read_text(encoding='utf8', errors='replace')
+                sections = markdown_sections(text)
+                rows = [(pub_id, section['locator'], section['title'],
+                         markdown_plain_text(section['text'])) for section in sections]
+                if not rows or not any(row[3] for row in rows):
+                    raise ValueError('Markdown document has no readable text')
+                with db:
+                    _delete_index_rows(db, 'md_passages', pub_id, 'md', prior)
+                    last=db.execute('SELECT rowid FROM md_passages ORDER BY rowid DESC LIMIT 1').fetchone()
+                    first=(last[0] if last else 0)+1
+                    db.executemany('INSERT INTO md_passages(rowid,pub_id,locator,title,body) VALUES (?,?,?,?,?)',
+                                   [(first+n,*row) for n,row in enumerate(rows)])
+                    db.executemany('INSERT INTO index_rows VALUES (?,?,?)',
+                                   [(pub_id,'md',first+n) for n in range(len(rows))])
+            else:
+                raise ValueError('Unsupported archive format')
             with db:
                 db.execute('INSERT OR REPLACE INTO index_state VALUES (?,?,?,?,?,?,NULL)',
                            (pub_id, f['format'], f['sha256'], ENGINE, len(rows), sparse))

@@ -107,6 +107,8 @@ def database():
       segments INTEGER, sparse INTEGER, error TEXT, PRIMARY KEY(pub_id,format));
     CREATE VIRTUAL TABLE IF NOT EXISTS epub_passages USING fts5(
       pub_id UNINDEXED, locator UNINDEXED, title, body, tokenize='unicode61');
+    CREATE VIRTUAL TABLE IF NOT EXISTS md_passages USING fts5(
+      pub_id UNINDEXED, locator UNINDEXED, title, body, tokenize='unicode61');
     CREATE TABLE IF NOT EXISTS events(time TEXT, kind TEXT, pub_id TEXT, detail TEXT);
     CREATE TABLE IF NOT EXISTS file_evidence(pub_id TEXT, format TEXT, sha256 TEXT,
       bytes INTEGER, mtime_ns INTEGER, PRIMARY KEY(pub_id,format));
@@ -142,6 +144,10 @@ def database():
                 if db.execute("SELECT 1 FROM sqlite_master WHERE name='pdf_pages'").fetchone():
                     db.execute("INSERT OR IGNORE INTO index_rows SELECT pub_id,'pdf',passage_rowid FROM pdf_pages")
                     db.commit()
+            if not db.execute("SELECT 1 FROM sqlite_master WHERE name='md_passages'").fetchone():
+                db.execute('''CREATE VIRTUAL TABLE md_passages USING fts5(
+                    pub_id UNINDEXED, locator UNINDEXED, title, body, tokenize='unicode61')''')
+                db.commit()
             # Seed the cached presence ledger from durable evidence when upgrading an
             # older library.  The next background scan still checks the real files.
             if db.execute('SELECT count(*) FROM file_presence').fetchone()[0] == 0:
